@@ -84,21 +84,24 @@ async fn test_batch_request() {
     batch.add_request("query_balance", json!({"invalid": "params"}));
     batch.add_request("query_balance", json!({"address": "cmx1def456"}));
 
-    let responses = client.batch_request(batch).await;
-    let is_ok = responses.is_ok();
-    if !is_ok {
-        assert_eq!(responses.unwrap_err(), CommunexError::BatchRpcError(vec![RpcErrorDetail { code: -32602, message: "Invalid params".to_string(), request_id: Some(2) }]));
-        return;
-    }
-    let responses = responses.unwrap();
-    assert_eq!(responses.len(), 3);
+    let responses = client.batch_request(batch).await.unwrap();
+    
+    // Check the number of successful responses
+    assert_eq!(responses.successes.len(), 2);
+    // Check the number of errors
+    assert_eq!(responses.errors.len(), 1);
 
-    assert_eq!(Balance::from_rpc(responses[0].clone()).unwrap().amount(), 1000000);
-    assert_eq!(Balance::from_rpc(responses[1].clone()).unwrap_err(), CommunexError::RpcError { code: -32602, message: "Invalid params".to_string() });
-    assert_eq!(Balance::from_rpc(responses[2].clone()).unwrap().amount(), 2000000);
-     
-    
-    
+    // Check first successful response
+    let first_balance = Balance::from_rpc(responses.successes[0].clone()).unwrap();
+    assert_eq!(first_balance.amount(), 1000000);
+
+    // Check error
+    assert_eq!(responses.errors[0].code, -32602);
+    assert_eq!(responses.errors[0].message, "Invalid params");
+
+    // Check second successful response
+    let second_balance = Balance::from_rpc(responses.successes[1].clone()).unwrap();
+    assert_eq!(second_balance.amount(), 2000000);
 }
 
 #[tokio::test]

@@ -9,6 +9,12 @@ pub struct RpcClient {
     client: HttpClient,
 }
 
+#[derive(Debug)]
+pub struct BatchResponse {
+    pub successes: Vec<Value>,
+    pub errors: Vec<RpcErrorDetail>,
+}
+
 impl RpcClient {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
@@ -87,34 +93,24 @@ impl RpcClient {
         self.handle_rpc_response(response_body).await
     }
 
-    pub async fn batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
+    pub async fn batch_request(&self, batch: BatchRequest) -> Result<BatchResponse, CommunexError> {
         let responses = self.send_batch_request(batch).await?;
-        
-        // Check if all responses are errors
-        let errors: Vec<RpcErrorDetail> = responses.iter()
-            .filter_map(|resp| {
-                if resp.get("error").is_some() {
-                    Some(RpcErrorDetail {
-                        code: resp["error"]["code"].as_i64().unwrap_or(0) as i32,
-                        message: resp["error"]["message"].as_str().unwrap_or("").to_string(),
-                        request_id: resp["id"].as_u64(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut successes = Vec::new();
+        let mut errors = Vec::new();
 
-        if !errors.is_empty() {
-            return Err(CommunexError::BatchRpcError(errors));
+        for resp in responses {
+            if let Some(error) = resp.get("error") {
+                errors.push(RpcErrorDetail {
+                    code: error["code"].as_i64().unwrap_or(0) as i32,
+                    message: error["message"].as_str().unwrap_or("").to_string(),
+                    request_id: resp["id"].as_u64(),
+                });
+            } else if let Some(result) = resp.get("result") {
+                successes.push(result.clone());
+            }
         }
 
-        let results: Vec<Value> = responses.iter()
-            .filter_map(|resp| resp.get("result"))
-            .cloned()
-            .collect();
-
-        Ok(results)
+        Ok(BatchResponse { successes, errors })
     }
 
     async fn send_batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
