@@ -19,4 +19,22 @@ pub enum CommunexError {
     
     #[error("Key derivation error: {0}")]
     KeyDerivationError(String),
+    
+    #[error("RPC error: {code} - {message}")]
+    RpcError {
+        code: i32,
+        message: String,
+    },
+    
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
+    
+    #[error("Parse error: {0}")]
+    ParseError(String),
+
+    #[error("Communex error: {0}")]
+    CommunexError(String),
+
+    #[error("Invalid balance: {0}")]
+    InvalidBalance(String),
 } 
