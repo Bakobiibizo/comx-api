@@ -48,32 +48,20 @@ impl RpcClient {
     }
 
     async fn handle_batch_response(&self, responses: Vec<Value>) -> Result<Vec<Value>, CommunexError> {
-        let mut errors = Vec::new();
         let mut results = Vec::new();
 
-        for (idx, response) in responses.into_iter().enumerate() {
-            match self.handle_rpc_response(response.clone()).await {
-                Ok(result) => results.push(result),
-                Err(CommunexError::RpcError { code, message }) => {
-                    errors.push(RpcErrorDetail {
-                        code,
-                        message,
-                        request_id: response.get("id").and_then(|id| id.as_u64()),
-                    });
-                }
-                Err(e) => errors.push(RpcErrorDetail {
-                    code: -32603,
-                    message: format!("Request {}: {}", idx, e),
-                    request_id: Some(idx as u64),
-                }),
+        for response in responses {
+            // For error responses, include the error object directly
+            if response.get("error").is_some() {
+                results.push(response);
+                continue;
             }
+
+            // For successful responses, include the entire response
+            results.push(response);
         }
 
-        if !errors.is_empty() {
-            Err(CommunexError::BatchRpcError(errors))
-        } else {
-            Ok(results)
-        }
+        Ok(results)
     }
 
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, CommunexError> {
@@ -100,18 +88,45 @@ impl RpcClient {
     }
 
     pub async fn batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
-        let requests: Vec<Value> = batch.into_requests()
-            .into_iter()
-            .enumerate()
-            .map(|(id, (method, params))| {
-                json!({
-                    "jsonrpc": "2.0",
-                    "method": method,
-                    "params": params,
-                    "id": id + 1
-                })
+        let responses = self.send_batch_request(batch).await?;
+        
+        // Check if all responses are errors
+        let errors: Vec<RpcErrorDetail> = responses.iter()
+            .filter_map(|resp| {
+                if resp.get("error").is_some() {
+                    Some(RpcErrorDetail {
+                        code: resp["error"]["code"].as_i64().unwrap_or(0) as i32,
+                        message: resp["error"]["message"].as_str().unwrap_or("").to_string(),
+                        request_id: resp["id"].as_u64(),
+                    })
+                } else {
+                    None
+                }
             })
             .collect();
+
+        if !errors.is_empty() {
+            return Err(CommunexError::BatchRpcError(errors));
+        }
+
+        let results: Vec<Value> = responses.iter()
+            .filter_map(|resp| resp.get("result"))
+            .cloned()
+            .collect();
+
+        Ok(results)
+    }
+
+    async fn send_batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
+        let mut requests = Vec::new();
+        for (method, params) in batch.into_requests().iter() {
+            requests.push(json!({
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params,
+                "id": 1
+            }));
+    }   
 
         if requests.is_empty() {
             return Ok(vec![]);

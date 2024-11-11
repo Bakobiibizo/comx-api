@@ -1,4 +1,4 @@
-use comx_api::rpc::{RpcClient, BatchRequest};
+use comx_api::rpc::{RpcClient, BatchRequest, RpcErrorDetail};
 use comx_api::types::{Balance, FromRpcResponse};
 use comx_api::error::CommunexError;
 use serde_json::json;
@@ -60,12 +60,20 @@ async fn test_batch_request() {
             "id": 1
         },
         {
+            "jsonrpc": "2.0", 
+            "error": {
+                "code": -32602, 
+                "message": "Invalid params"
+            }, 
+            "id": 2
+        },
+        {
             "jsonrpc": "2.0",
             "result": {
                 "amount": "2000000",
                 "denom": "COMAI"
             },
-            "id": 2
+            "id": 3
         }
     ]);
 
@@ -73,19 +81,24 @@ async fn test_batch_request() {
     let mut batch = BatchRequest::new();
 
     batch.add_request("query_balance", json!({"address": "cmx1abc123"}));
+    batch.add_request("query_balance", json!({"invalid": "params"}));
     batch.add_request("query_balance", json!({"address": "cmx1def456"}));
 
     let responses = client.batch_request(batch).await;
-    assert!(responses.is_ok());
-    
+    let is_ok = responses.is_ok();
+    if !is_ok {
+        assert_eq!(responses.unwrap_err(), CommunexError::BatchRpcError(vec![RpcErrorDetail { code: -32602, message: "Invalid params".to_string(), request_id: Some(2) }]));
+        return;
+    }
     let responses = responses.unwrap();
-    assert_eq!(responses.len(), 2);
+    assert_eq!(responses.len(), 3);
+
+    assert_eq!(Balance::from_rpc(responses[0].clone()).unwrap().amount(), 1000000);
+    assert_eq!(Balance::from_rpc(responses[1].clone()).unwrap_err(), CommunexError::RpcError { code: -32602, message: "Invalid params".to_string() });
+    assert_eq!(Balance::from_rpc(responses[2].clone()).unwrap().amount(), 2000000);
+     
     
-    let first_balance = Balance::from_rpc(responses[0].clone()).unwrap();
-    let second_balance = Balance::from_rpc(responses[1].clone()).unwrap();
     
-    assert_eq!(first_balance.amount(), 1000000);
-    assert_eq!(second_balance.amount(), 2000000);
 }
 
 #[tokio::test]

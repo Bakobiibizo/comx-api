@@ -1,7 +1,8 @@
 use thiserror::Error;
+use std::cmp::PartialEq; 
 use std::fmt;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum CommunexError {
     #[error("Invalid address format: {0}")]
     InvalidAddress(String),
@@ -26,6 +27,7 @@ pub enum CommunexError {
         code: i32,
         message: String,
     },
+
     #[error("Batch RPC errors: {}", format_errors(.0))]
     BatchRpcError(Vec<RpcErrorDetail>),
     
@@ -44,7 +46,7 @@ pub enum CommunexError {
     InvalidBalance(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct RpcErrorDetail {
     pub code: i32,
     pub message: String,
