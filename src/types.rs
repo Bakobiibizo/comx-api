@@ -5,6 +5,10 @@ use sp_core::sr25519::{Public, Signature, Pair};
 use sp_core::sr25519::{PUBLIC_KEY_SERIALIZED_SIZE, SIGNATURE_SERIALIZED_SIZE};
 use std::string::String;
 use serde_json::Value;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static REQUEST_ID: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Address(String);
 
@@ -176,12 +180,11 @@ pub struct RpcRequest {
 
 impl RpcRequest {
     pub fn new(method: impl Into<String>, params: serde_json::Value) -> Self {
-        static mut REQUEST_ID: u64 = 0;
         Self {
             jsonrpc: "2.0".to_string(),
             method: method.into(),
             params,
-            id: unsafe { REQUEST_ID += 1; REQUEST_ID },
+            id: REQUEST_ID.fetch_add(1, Ordering::Relaxed),
         }
     }
 }
