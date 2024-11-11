@@ -3,7 +3,7 @@ use crate::error::CommunexError;
 use crate::crypto::{KeyPair, serde::{hex_signature, hex_pubkey}};
 use sp_core::sr25519::{Public, Signature, Pair};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Address(String);
 
 impl Address {
