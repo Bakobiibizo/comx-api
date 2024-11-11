@@ -1,0 +1,5 @@
+Cargo.lock
+.cursorrules
+docs/*.txt
+scripts/
+target/
