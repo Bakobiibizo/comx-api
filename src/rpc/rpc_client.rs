@@ -1,7 +1,7 @@
 use std::time::Duration;
 use reqwest::{Client as HttpClient, ClientBuilder};
 use serde_json::{Value, json};
-use crate::error::CommunexError;
+use crate::error::{CommunexError, RpcErrorDetail};
 use super::batch::BatchRequest;
 
 pub struct RpcClient {
@@ -29,6 +29,53 @@ impl RpcClient {
         }
     }
 
+    async fn handle_rpc_response(&self, response: Value) -> Result<Value, CommunexError> {
+        if let Some(error) = response.get("error") {
+            let code = error.get("code")
+                .and_then(|c| c.as_i64())
+                .unwrap_or(-32603) as i32;
+            let message = error.get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error")
+                .to_string();
+            
+            return Err(CommunexError::RpcError { code, message });
+        }
+
+        response.get("result")
+            .cloned()
+            .ok_or_else(|| CommunexError::MalformedResponse("Missing 'result' field".to_string()))
+    }
+
+    async fn handle_batch_response(&self, responses: Vec<Value>) -> Result<Vec<Value>, CommunexError> {
+        let mut errors = Vec::new();
+        let mut results = Vec::new();
+
+        for (idx, response) in responses.into_iter().enumerate() {
+            match self.handle_rpc_response(response.clone()).await {
+                Ok(result) => results.push(result),
+                Err(CommunexError::RpcError { code, message }) => {
+                    errors.push(RpcErrorDetail {
+                        code,
+                        message,
+                        request_id: response.get("id").and_then(|id| id.as_u64()),
+                    });
+                }
+                Err(e) => errors.push(RpcErrorDetail {
+                    code: -32603,
+                    message: format!("Request {}: {}", idx, e),
+                    request_id: Some(idx as u64),
+                }),
+            }
+        }
+
+        if !errors.is_empty() {
+            Err(CommunexError::BatchRpcError(errors))
+        } else {
+            Ok(results)
+        }
+    }
+
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, CommunexError> {
         let request_body = json!({
             "jsonrpc": "2.0",
@@ -44,29 +91,12 @@ impl RpcClient {
             .await
             .map_err(|e| CommunexError::ConnectionError(e.to_string()))?;
 
-        let status = response.status();
         let response_body: Value = response
             .json()
             .await
             .map_err(|e| CommunexError::ParseError(e.to_string()))?;
 
-        if !status.is_success() {
-            if let Some(error) = response_body.get("error") {
-                return Err(CommunexError::RpcError {
-                    code: error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1) as i32,
-                    message: error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error").to_string(),
-                });
-            }
-        }
-
-        if let Some(error) = response_body.get("error") {
-            return Err(CommunexError::RpcError {
-                code: error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1) as i32,
-                message: error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error").to_string(),
-            });
-        }
-
-        Ok(response_body)
+        self.handle_rpc_response(response_body).await
     }
 
     pub async fn batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
@@ -94,29 +124,11 @@ impl RpcClient {
             .await
             .map_err(|e| CommunexError::ConnectionError(e.to_string()))?;
 
-        let status = response.status();
         let response_body: Value = response
             .json()
             .await
             .map_err(|e| CommunexError::ParseError(e.to_string()))?;
 
-        if !status.is_success() {
-            return Err(CommunexError::ConnectionError(format!("HTTP {}", status)));
-        }
-
-        let responses = response_body.as_array()
-            .ok_or_else(|| CommunexError::ParseError("Expected array response for batch request".to_string()))?;
-
-        // Check for errors in individual responses
-        for response in responses {
-            if let Some(error) = response.get("error") {
-                return Err(CommunexError::RpcError {
-                    code: error.get("code").and_then(|c| c.as_i64()).unwrap_or(-1) as i32,
-                    message: error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error").to_string(),
-                });
-            }
-        }
-
-        Ok(responses.to_vec())
+        self.handle_batch_response(response_body.as_array().unwrap().to_vec()).await
     }
 }
