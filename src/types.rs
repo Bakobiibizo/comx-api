@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use ed25519_dalek::{Signature, VerifyingKey, SIGNATURE_LENGTH, PUBLIC_KEY_LENGTH, Verifier};
 use crate::error::CommunexError;
 use crate::crypto::{KeyPair, serde::{hex_signature, hex_pubkey}};
+use sp_core::sr25519::{Public, Signature, Pair};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Address(String);
@@ -93,11 +93,12 @@ impl Transaction {
             .map_err(|e| CommunexError::SigningError(e.to_string()))?;
         
         let signature = keypair.sign(&message);
+        let public_key = keypair.public_key();
         
         Ok(SignedTransaction {
             transaction: self.clone(),
-            signature: signature.to_bytes(),
-            public_key: keypair.verifying_key.to_bytes(),
+            signature,
+            public_key,
         })
     }
     
@@ -119,9 +120,9 @@ impl Transaction {
 pub struct SignedTransaction {
     transaction: Transaction,
     #[serde(with = "hex_signature")]
-    signature: [u8; SIGNATURE_LENGTH],
+    signature: [u8; 64],
     #[serde(with = "hex_pubkey")]
-    public_key: [u8; PUBLIC_KEY_LENGTH],
+    public_key: [u8; 32],
 }
 
 impl SignedTransaction {
@@ -129,17 +130,18 @@ impl SignedTransaction {
         self.verify_signature_with_key(&self.public_key)
     }
     
-    pub fn verify_signature_with_key(&self, public_key: &[u8; PUBLIC_KEY_LENGTH]) -> Result<(), CommunexError> {
-        let verifying_key = VerifyingKey::from_bytes(public_key)
-            .map_err(|e| CommunexError::InvalidSignature(e.to_string()))?;
-        
-        let signature = Signature::from_bytes(&self.signature);
+    pub fn verify_signature_with_key(&self, public_key: &[u8; 32]) -> Result<(), CommunexError> {
+        let public = Public::from_raw(*public_key);
+        let signature = Signature::from_raw(self.signature);
         
         let message = self.transaction.serialize_for_signing()
             .map_err(|e| CommunexError::SigningError(e.to_string()))?;
-        
-        verifying_key.verify(&message, &signature)
-            .map_err(|e| CommunexError::InvalidSignature(e.to_string()))
+            
+        if <Pair as sp_core::Pair>::verify(&signature, &message, &public) {
+            Ok(())
+        } else {
+            Err(CommunexError::InvalidSignature("Signature verification failed".into()))
+        }
     }
 }
 
