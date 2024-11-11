@@ -16,7 +16,7 @@ Add to your Cargo.toml:
 
 ```toml
 [dependencies]
-comx-api = "0.1.0"
+comx-api = "*"
 ```
 
 ## Quick Start
