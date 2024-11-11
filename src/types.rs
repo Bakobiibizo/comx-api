@@ -117,7 +117,7 @@ impl Transaction {
         let public_key = keypair.public_key();
         
         Ok(SignedTransaction {
-            transaction: self.clone(),
+            transaction: self,
             signature,
             public_key,
         })
