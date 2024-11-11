@@ -13,4 +13,8 @@ impl BatchRequest {
     pub fn add_request(&mut self, method: impl Into<String>, params: Value) {
         self.requests.push((method.into(), params));
     }
+
+    pub(crate) fn into_requests(self) -> Vec<(String, Value)> {
+        self.requests
+    }
 } 
