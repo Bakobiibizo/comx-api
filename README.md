@@ -5,7 +5,7 @@ A Rust implementation of the Communex blockchain client API, optimized for high 
 ## Features
 
 - SR25519 cryptographic operations using Substrate primitives
-- Async RPC client with batch request support
+- Async RPC client with batch request support (requires tokio runtime)
 - Wallet management and transaction signing
 - Query map caching with automatic updates
 - Compatible with existing Communex ecosystem
@@ -17,31 +17,29 @@ Add to your Cargo.toml:
 ```toml
 [dependencies]
 comx-api = "0.1.0"
+tokio = { version = "1.0", features = ["full"] }
 ```
 
 ## Quick Start
 
 ```rust
 use comx_api::{KeyPair, Transaction};
-
-async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a keypair from seed phrase
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+// Create a keypair from seed phrase
     let keypair = KeyPair::from_seed_phrase(
-        "wait swarm general shield hope target rebuild profit later pepper under hunt"
-    )?;
-
-    // Create and sign a transaction
-    let tx = Transaction::new(
-        keypair.ss58_address(),
-        "destination_address",
-        "1000000",
-        "ucmx",
-        "transfer tokens"
-    );
-    
-    let signed_tx = tx.sign(&keypair)?;
-    
-    Ok(())
+    "wait swarm general shield hope target rebuild profit later pepper under hunt"
+)?;
+// Create and sign a transaction
+let tx = Transaction::new(
+    keypair.ss58_address(),
+    "destination_address",
+    "1000000",
+    "ucmx",
+    "transfer tokens"
+);
+let signed_tx = tx.sign(&keypair)?;
+Ok(())
 }
 ```
 

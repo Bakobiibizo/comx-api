@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use crate::error::CommunexError;
-use crate::crypto::{KeyPair, serde::{hex_signature, hex_pubkey}};
+use crate::crypto::{KeyPair, serde::hex_bytes};
 use sp_core::sr25519::{Public, Signature, Pair};
-
+use sp_core::sr25519::{PUBLIC_KEY_SERIALIZED_SIZE, SIGNATURE_SERIALIZED_SIZE};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Address(String);
 
@@ -118,11 +118,11 @@ impl Transaction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedTransaction {
-    transaction: Transaction,
-    #[serde(with = "hex_signature")]
-    signature: [u8; 64],
-    #[serde(with = "hex_pubkey")]
-    public_key: [u8; 32],
+    pub transaction: Transaction,
+    #[serde(with = "hex_bytes")]
+    pub signature: [u8; SIGNATURE_SERIALIZED_SIZE],
+    #[serde(with = "hex_bytes")]
+    pub public_key: [u8; PUBLIC_KEY_SERIALIZED_SIZE],
 }
 
 impl SignedTransaction {

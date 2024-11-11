@@ -4,7 +4,6 @@ use sp_core::{
     crypto::{Ss58Codec, Ss58AddressFormat, DeriveJunction},
     
 };
-use bip39::Mnemonic;
 use crate::error::CommunexError;
 
 pub struct KeyPair {
