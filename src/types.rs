@@ -3,6 +3,8 @@ use crate::error::CommunexError;
 use crate::crypto::{KeyPair, serde::hex_bytes};
 use sp_core::sr25519::{Public, Signature, Pair};
 use sp_core::sr25519::{PUBLIC_KEY_SERIALIZED_SIZE, SIGNATURE_SERIALIZED_SIZE};
+use std::string::String;
+use serde_json::Value;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Address(String);
 
@@ -37,6 +39,25 @@ impl Balance {
 
     pub fn denom(&self) -> &str {
         &self.denom
+    }
+
+    pub fn parse(&self) -> Result<u64, CommunexError> {
+        self.amount.parse().map_err(|e: std::num::ParseIntError| CommunexError::InvalidBalance(e.to_string()))
+    }
+}
+
+impl FromRpcResponse for Balance {
+    fn from_rpc(value: Value) -> Result<Self, CommunexError> {
+        // For RPC responses, we need to extract the result field
+        let result = if let Some(result) = value.get("result") {
+            result
+        } else {
+            &value
+        };
+
+        // Try to deserialize the balance
+        serde_json::from_value(result.clone())
+            .map_err(|e| CommunexError::ParseError(e.to_string()))
     }
 }
 
@@ -96,7 +117,7 @@ impl Transaction {
         let public_key = keypair.public_key();
         
         Ok(SignedTransaction {
-            transaction: self,
+            transaction: self.clone(),
             signature,
             public_key,
         })
@@ -178,3 +199,7 @@ pub struct RpcError {
     pub code: i32,
     pub message: String,
 }
+
+pub trait FromRpcResponse: Sized {
+    fn from_rpc(value: Value) -> Result<Self, CommunexError>;
+} 

@@ -35,7 +35,7 @@ let tx = Transaction::new(
     keypair.ss58_address(),
     "destination_address",
     "1000000",
-    "ucmx",
+    "COMAI",
     "transfer tokens"
 );
 let signed_tx = tx.sign(&keypair)?;
