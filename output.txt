@@ -1,0 +1,527 @@
+./src/main.rs
+fn main() {
+    println!("Hello, world!");
+}
+--------------------------------------------------
+./src/types.rs
+use serde::{Deserialize, Serialize};
+use crate::error::CommunexError;
+use crate::crypto::{KeyPair, serde::{hex_signature, hex_pubkey}};
+use sp_core::sr25519::{Public, Signature, Pair};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Address(String);
+
+impl Address {
+    pub fn new(address: impl Into<String>) -> Result<Self, CommunexError> {
+        let address = address.into();
+        // Basic validation: should start with "cmx1" and be of proper length
+        if !address.starts_with("cmx1") || address.len() < 8 {
+            return Err(CommunexError::InvalidAddress(address));
+        }
+        Ok(Self(address))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Balance {
+    amount: String,
+    denom: String,
+}
+
+impl Balance {
+    pub fn new(amount: impl Into<String>, denom: impl Into<String>) -> Self {
+        Self {
+            amount: amount.into(),
+            denom: denom.into(),
+        }
+    }
+
+    pub fn amount(&self) -> u64 {
+        self.amount.parse().unwrap_or(0)
+    }
+
+    pub fn denom(&self) -> &str {
+        &self.denom
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transaction {
+    from: String,
+    to: String,
+    amount: String,
+    denom: String,
+    memo: String,
+    signature: Option<Vec<u8>>,
+    public_key: Option<Vec<u8>>,
+}
+
+impl Transaction {
+    pub fn new(
+        from: impl Into<String>,
+        to: impl Into<String>,
+        amount: impl Into<String>,
+        denom: impl Into<String>,
+        memo: impl Into<String>,
+    ) -> Self {
+        Self {
+            from: from.into(),
+            to: to.into(),
+            amount: amount.into(),
+            denom: denom.into(),
+            memo: memo.into(),
+            signature: None,
+            public_key: None,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), CommunexError> {
+        // Basic validation
+        if !self.from.starts_with("cmx1") || !self.to.starts_with("cmx1") {
+            return Err(CommunexError::InvalidTransaction(
+                "Invalid address format".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn amount(&self) -> &str {
+        &self.amount
+    }
+
+    pub fn denom(&self) -> &str {
+        &self.denom
+    }
+
+    pub fn sign(&self, keypair: &KeyPair) -> Result<SignedTransaction, CommunexError> {
+        let message = self.serialize_for_signing()
+            .map_err(|e| CommunexError::SigningError(e.to_string()))?;
+        
+        let signature = keypair.sign(&message);
+        let public_key = keypair.public_key();
+        
+        Ok(SignedTransaction {
+            transaction: self.clone(),
+            signature,
+            public_key,
+        })
+    }
+    
+    fn serialize_for_signing(&self) -> Result<Vec<u8>, serde_json::Error> {
+        // Create a canonical form for signing
+        let signing_data = serde_json::json!({
+            "from": self.from,
+            "to": self.to,
+            "amount": self.amount,
+            "denom": self.denom,
+            "memo": self.memo,
+        });
+        
+        serde_json::to_vec(&signing_data)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignedTransaction {
+    transaction: Transaction,
+    #[serde(with = "hex_signature")]
+    signature: [u8; 64],
+    #[serde(with = "hex_pubkey")]
+    public_key: [u8; 32],
+}
+
+impl SignedTransaction {
+    pub fn verify_signature(&self) -> Result<(), CommunexError> {
+        self.verify_signature_with_key(&self.public_key)
+    }
+    
+    pub fn verify_signature_with_key(&self, public_key: &[u8; 32]) -> Result<(), CommunexError> {
+        let public = Public::from_raw(*public_key);
+        let signature = Signature::from_raw(self.signature);
+        
+        let message = self.transaction.serialize_for_signing()
+            .map_err(|e| CommunexError::SigningError(e.to_string()))?;
+            
+        if <Pair as sp_core::Pair>::verify(&signature, &message, &public) {
+            Ok(())
+        } else {
+            Err(CommunexError::InvalidSignature("Signature verification failed".into()))
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RpcRequest {
+    jsonrpc: String,
+    method: String,
+    params: serde_json::Value,
+    id: u64,
+}
+
+impl RpcRequest {
+    pub fn new(method: impl Into<String>, params: serde_json::Value) -> Self {
+        static mut REQUEST_ID: u64 = 0;
+        Self {
+            jsonrpc: "2.0".to_string(),
+            method: method.into(),
+            params,
+            id: unsafe { REQUEST_ID += 1; REQUEST_ID },
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RpcResponse {
+    pub jsonrpc: String,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<RpcError>,
+    pub id: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RpcError {
+    pub code: i32,
+    pub message: String,
+}
+--------------------------------------------------
+./src/error.rs
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CommunexError {
+    #[error("Invalid address format: {0}")]
+    InvalidAddress(String),
+    
+    #[error("Invalid transaction: {0}")]
+    InvalidTransaction(String),
+    
+    #[error("Invalid seed phrase: {0}")]
+    InvalidSeedPhrase(String),
+    
+    #[error("Signing error: {0}")]
+    SigningError(String),
+    
+    #[error("Invalid signature: {0}")]
+    InvalidSignature(String),
+    
+    #[error("Key derivation error: {0}")]
+    KeyDerivationError(String),
+} --------------------------------------------------
+./src/lib.rs
+pub mod error;
+pub mod types;
+pub mod crypto;
+
+pub use error::CommunexError;
+pub use types::{Address, Balance, Transaction, SignedTransaction};
+pub use crypto::KeyPair; --------------------------------------------------
+./src/crypto/keypair.rs
+use sp_core::{
+    sr25519::{Pair, Signature},
+    Pair as PairT,
+    crypto::{Ss58Codec, Ss58AddressFormat, DeriveJunction},
+    
+};
+use bip39::Mnemonic;
+use crate::error::CommunexError;
+
+pub struct KeyPair {
+    pair: Pair,
+    ss58_address: String,
+    seed: [u8; 32],
+}
+
+impl KeyPair {
+    pub fn from_seed_phrase(phrase: &str) -> Result<Self, CommunexError> {
+        let mnemonic = Mnemonic::parse_normalized(phrase)
+            .map_err(|e| CommunexError::InvalidSeedPhrase(e.to_string()))?;
+        
+        let seed = mnemonic.to_seed("");
+        let seed_bytes: [u8; 32] = seed[..32]
+            .try_into()
+            .map_err(|_| CommunexError::KeyDerivationError("Invalid seed length".into()))?;
+
+        // Create pair from seed
+        let pair = Pair::from_seed(&seed_bytes);
+        
+        // Generate SS58 address with substrate format (42 is the substrate prefix)
+        let public = pair.public();
+        let ss58_address = public.to_ss58check_with_version(Ss58AddressFormat::custom(42));
+        
+        Ok(Self {
+            pair,
+            ss58_address,
+            seed: seed_bytes,
+        })
+    }
+
+    pub fn ss58_address(&self) -> &str {
+        &self.ss58_address
+    }
+
+    pub fn public_key(&self) -> [u8; 32] {
+        self.pair.public().0
+    }
+
+    pub fn seed(&self) -> &[u8; 32] {
+        &self.seed
+    }
+
+    pub fn sign(&self, message: &[u8]) -> [u8; 64] {
+        self.pair.sign(message).0
+    }
+    
+    pub fn derive_address(&self, index: u32) -> Result<String, CommunexError> {
+        // Create a hard derivation junction from the index
+        let junction = DeriveJunction::hard(&index.to_le_bytes());
+        
+        // Derive new key pair using substrate's derivation
+        let (derived_pair, _) = self.pair.derive(
+            std::iter::once(junction),
+            None
+        ).map_err(|e| CommunexError::KeyDerivationError(e.to_string()))?;
+        
+        // Generate SS58 address for derived public key
+        let public = derived_pair.public();
+        Ok(public.to_ss58check_with_version(Ss58AddressFormat::custom(42)))
+    }
+
+    pub fn verify(&self, message: &[u8], signature: &[u8; 64]) -> bool {
+        let sig = Signature::from_raw(*signature);
+        Pair::verify(&sig, message, &self.pair.public())
+    }
+}
+
+--------------------------------------------------
+./src/crypto/serde.rs
+use serde::{Deserializer, Serializer};
+use ed25519_dalek::{SIGNATURE_LENGTH, PUBLIC_KEY_LENGTH};
+
+pub mod hex_signature {
+    use super::*;
+
+    pub fn serialize<S>(bytes: &[u8; SIGNATURE_LENGTH], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&hex::encode(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; SIGNATURE_LENGTH], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let s: String = serde::Deserialize::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(|e| Error::custom(e.to_string()))?;
+        bytes.try_into().map_err(|_| Error::custom("Invalid signature length"))
+    }
+}
+
+pub mod hex_pubkey {
+    use super::*;
+
+    pub fn serialize<S>(bytes: &[u8; PUBLIC_KEY_LENGTH], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&hex::encode(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; PUBLIC_KEY_LENGTH], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let s: String = serde::Deserialize::deserialize(deserializer)?;
+        let bytes = hex::decode(&s).map_err(|e| Error::custom(e.to_string()))?;
+        bytes.try_into().map_err(|_| Error::custom("Invalid public key length"))
+    }
+}
+--------------------------------------------------
+./src/crypto/mod.rs
+pub mod keypair;
+pub mod serde;
+
+pub use keypair::KeyPair;
+--------------------------------------------------
+./tests/types_test.rs
+use comx_api::{
+    types::{Address, Balance, Transaction, SignedTransaction, RpcRequest},
+    crypto::KeyPair,
+};
+use serde_json::json;
+
+#[test]
+fn test_address_validation() {
+    // Test valid address format
+    let valid_address = "cmx1abc123..."; // Use actual address format from reference
+    assert!(Address::new(valid_address).is_ok());
+
+    // Test invalid address format
+    let invalid_address = "invalid_address";
+    assert!(Address::new(invalid_address).is_err());
+}
+
+#[test]
+fn test_rpc_request_serialization() {
+    let request = RpcRequest::new(
+        "query_balance",
+        json!({
+            "address": "cmx1abc123...",
+            "denom": "COMAI"
+        }),
+    );
+
+    let serialized = serde_json::to_string(&request).unwrap();
+    assert!(serialized.contains("query_balance"));
+    assert!(serialized.contains("jsonrpc"));
+    assert!(serialized.contains("2.0"));
+}
+
+#[test]
+fn test_balance_parsing() {
+    let balance_json = json!({
+        "amount": "1000000",
+        "denom": "COMAI"
+    });
+
+    let balance: Balance = serde_json::from_value(balance_json).unwrap();
+    assert_eq!(balance.amount(), 1000000);
+    assert_eq!(balance.denom(), "COMAI");
+}
+
+#[test]
+fn test_transaction_creation() {
+    let tx = Transaction::new(
+        "cmx1sender...",
+        "cmx1receiver...",
+        "1000000",
+        "COMAI",
+        "transfer tokens",
+    );
+
+    assert!(tx.validate().is_ok());
+    assert_eq!(tx.amount(), "1000000");
+    assert_eq!(tx.denom(), "COMAI");
+}
+
+#[test]
+fn test_keypair_creation_and_validation() {
+    // Test creating from seed phrase
+    let seed_phrase = "wait swarm general shield hope target rebuild profit later pepper under hunt"; //testkey.json
+    let keypair = KeyPair::from_seed_phrase(seed_phrase).unwrap();
+    
+    // Verify SS58 address format
+    assert!(keypair.ss58_address().starts_with("5"));
+    
+    // Test public key accessibility
+    let public_key = keypair.public_key();
+    assert!(!public_key.is_empty());
+    
+    // Test invalid seed phrase
+    let invalid_seed = "invalid seed phrase";
+    assert!(KeyPair::from_seed_phrase(invalid_seed).is_err());
+}
+
+#[test]
+fn test_transaction_signing() {
+    let seed_phrase = "wait swarm general shield hope target rebuild profit later pepper under hunt";
+    let keypair = KeyPair::from_seed_phrase(seed_phrase).unwrap();
+    
+    let tx = Transaction::new(
+        keypair.ss58_address(),
+        "cmx1receiver...",
+        "1000000",
+        "COMAI",
+        "transfer tokens",
+    );
+    
+    // Sign the transaction
+    let signed_tx = tx.sign(&keypair).unwrap();
+    
+    // Verify signature
+    assert!(signed_tx.verify_signature().is_ok());
+    
+    // Test invalid signature
+    let different_seed = "field mistake sustain bench foster cactus anxiety until riot capable obscure service"; // Test key2.json
+    let different_keypair = KeyPair::from_seed_phrase(different_seed).unwrap();
+    
+    // Convert public key to fixed-size array
+    let public_key: [u8; 32] = different_keypair.public_key()
+        .try_into()
+        .expect("Invalid public key length");
+        
+    assert!(signed_tx.verify_signature_with_key(&public_key).is_err());
+}
+
+#[test]
+fn test_keypair_address_derivation() {
+    let seed_phrase = "wait swarm general shield hope target rebuild profit later pepper under hunt";
+    let keypair = KeyPair::from_seed_phrase(seed_phrase).unwrap();
+    
+    // Test address derivation for different paths
+    let default_address = keypair.derive_address(0).unwrap();
+    let second_address = keypair.derive_address(1).unwrap();
+    
+    assert_ne!(default_address, second_address);
+    assert!(default_address.starts_with("5"));
+    assert!(second_address.starts_with("5"));
+}
+
+#[test]
+fn test_keypair_from_testkey() {
+    let phrase = "wait swarm general shield hope target rebuild profit later pepper under hunt";
+    println!("mnemonic: {}", phrase);
+    
+    let keypair = KeyPair::from_seed_phrase(phrase).unwrap();
+    
+    // Print intermediate values
+    println!("Seed bytes: {:?}", keypair.seed());
+    println!("Public key: {:?}", keypair.public_key());
+    println!("Generated address: {}", keypair.ss58_address());
+    println!("Expected address: 5CfjkoBAQ2LvJRmdcsoWXKSZkzR4k2KvpDVf2u1ohgm3UczR");
+    
+    assert_eq!(
+        keypair.ss58_address(),
+        "5CfjkoBAQ2LvJRmdcsoWXKSZkzR4k2KvpDVf2u1ohgm3UczR"
+    );
+}
+
+#[test]
+fn test_transaction_serialization() {
+    let tx = Transaction::new(
+        "cmx1sender...",
+        "cmx1receiver...",
+        "1000000",
+        "COMAI",
+        "transfer tokens",
+    );
+
+    let serialized = serde_json::to_string(&tx).unwrap();
+    let deserialized: Transaction = serde_json::from_str(&serialized).unwrap();
+
+    assert_eq!(tx.amount(), deserialized.amount());
+    assert_eq!(tx.denom(), deserialized.denom());
+}
+
+#[test]
+fn test_signed_transaction_serialization() {
+    let seed_phrase = "wait swarm general shield hope target rebuild profit later pepper under hunt";
+    let keypair = KeyPair::from_seed_phrase(seed_phrase).unwrap();
+    
+    let tx = Transaction::new(
+        keypair.ss58_address(),
+        "cmx1receiver...",
+        "1000000",
+        "COMAI",
+        "transfer tokens",
+    );
+    
+    let signed_tx = tx.sign(&keypair).unwrap();
+    let serialized = serde_json::to_string(&signed_tx).unwrap();
+    let deserialized: SignedTransaction = serde_json::from_str(&serialized).unwrap();
+    
+    assert!(deserialized.verify_signature().is_ok());
+}--------------------------------------------------
