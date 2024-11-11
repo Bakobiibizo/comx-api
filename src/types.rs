@@ -65,6 +65,15 @@ impl FromRpcResponse for Balance {
     }
 }
 
+#[derive(Serialize)]
+struct SigningData<'a> {
+    from: &'a str,
+    to: &'a str,
+    amount: &'a str,
+    denom: &'a str,
+    memo: &'a str,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     from: String,
@@ -128,15 +137,13 @@ impl Transaction {
     }
     
     fn serialize_for_signing(&self) -> Result<Vec<u8>, serde_json::Error> {
-        // Create a canonical form for signing
-        let signing_data = serde_json::json!({
-            "from": self.from,
-            "to": self.to,
-            "amount": self.amount,
-            "denom": self.denom,
-            "memo": self.memo,
-        });
-        
+        let signing_data = SigningData {
+            from: &self.from,
+            to: &self.to,
+            amount: &self.amount,
+            denom: &self.denom,
+            memo: &self.memo,
+        };
         serde_json::to_vec(&signing_data)
     }
 }
