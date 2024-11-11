@@ -1,7 +1,9 @@
-use comx_api::types::{Address, Balance, Transaction, RpcRequest, RpcResponse, KeyPair};
-use serde_json::json;
+use comx_api::{
+    types::{Address, Balance, Transaction, SignedTransaction, RpcRequest},
+    crypto::KeyPair,
+};
+use serde_json::{json, Value};
 use std::fs;
-use serde_json::Value;
 
 #[test]
 fn test_address_validation() {
@@ -97,7 +99,13 @@ fn test_transaction_signing() {
     // Test invalid signature
     let different_seed = "differ test test test test test test test test test test junk";
     let different_keypair = KeyPair::from_seed_phrase(different_seed).unwrap();
-    assert!(signed_tx.verify_signature_with_key(&different_keypair.public_key()).is_err());
+    
+    // Convert public key to fixed-size array
+    let public_key: [u8; 32] = different_keypair.public_key()
+        .try_into()
+        .expect("Invalid public key length");
+        
+    assert!(signed_tx.verify_signature_with_key(&public_key).is_err());
 }
 
 #[test]
@@ -135,7 +143,7 @@ fn test_keypair_from_testkey() {
     // Test signing
     let tx = Transaction::new(
         keypair.ss58_address(),
-        "5DtTeoNjcN19qTpoFgyW9iQaiRsYtBPF5FarjoxPEy4k4ieJ",
+        "5CfjkoBAQ2LvJRmdcsoWXKSZkzR4k2KvpDVf2u1ohgm3UczR",
         "1000000",
         "ucmx",
         "test transfer",
@@ -143,4 +151,41 @@ fn test_keypair_from_testkey() {
     
     let signed_tx = tx.sign(&keypair).unwrap();
     assert!(signed_tx.verify_signature().is_ok());
+}
+
+#[test]
+fn test_transaction_serialization() {
+    let tx = Transaction::new(
+        "cmx1sender...",
+        "cmx1receiver...",
+        "1000000",
+        "ucmx",
+        "transfer tokens",
+    );
+
+    let serialized = serde_json::to_string(&tx).unwrap();
+    let deserialized: Transaction = serde_json::from_str(&serialized).unwrap();
+
+    assert_eq!(tx.amount(), deserialized.amount());
+    assert_eq!(tx.denom(), deserialized.denom());
+}
+
+#[test]
+fn test_signed_transaction_serialization() {
+    let seed_phrase = "test test test test test test test test test test test junk";
+    let keypair = KeyPair::from_seed_phrase(seed_phrase).unwrap();
+    
+    let tx = Transaction::new(
+        keypair.ss58_address(),
+        "cmx1receiver...",
+        "1000000",
+        "ucmx",
+        "transfer tokens",
+    );
+    
+    let signed_tx = tx.sign(&keypair).unwrap();
+    let serialized = serde_json::to_string(&signed_tx).unwrap();
+    let deserialized: SignedTransaction = serde_json::from_str(&serialized).unwrap();
+    
+    assert!(deserialized.verify_signature().is_ok());
 }

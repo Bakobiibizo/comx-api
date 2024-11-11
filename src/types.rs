@@ -1,27 +1,9 @@
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
-use bip39::{Mnemonic, Language, Seed};
-use blake2b_simd::blake2b;
-use base58;
+use ed25519_dalek::{Signature, VerifyingKey, SIGNATURE_LENGTH, PUBLIC_KEY_LENGTH, Verifier};
+use crate::error::CommunexError;
+use crate::crypto::{KeyPair, serde::{hex_signature, hex_pubkey}};
 
-#[derive(Debug, Error)]
-pub enum CommunexError {
-    #[error("Invalid address format: {0}")]
-    InvalidAddress(String),
-    #[error("Invalid transaction: {0}")]
-    InvalidTransaction(String),
-    #[error("Invalid seed phrase: {0}")]
-    InvalidSeedPhrase(String),
-    #[error("Signing error: {0}")]
-    SigningError(String),
-    #[error("Invalid signature: {0}")]
-    InvalidSignature(String),
-    #[error("Key derivation error: {0}")]
-    KeyDerivationError(String),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Address(String);
 
 impl Address {
@@ -110,12 +92,12 @@ impl Transaction {
         let message = self.serialize_for_signing()
             .map_err(|e| CommunexError::SigningError(e.to_string()))?;
         
-        let signature = keypair.keypair.sign(&message);
+        let signature = keypair.sign(&message);
         
         Ok(SignedTransaction {
             transaction: self.clone(),
-            signature: signature.to_bytes().to_vec(),
-            public_key: keypair.public_key().to_vec(),
+            signature: signature.to_bytes(),
+            public_key: keypair.verifying_key.to_bytes(),
         })
     }
     
@@ -136,30 +118,27 @@ impl Transaction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedTransaction {
     transaction: Transaction,
-    signature: Vec<u8>,
-    public_key: Vec<u8>,
+    #[serde(with = "hex_signature")]
+    signature: [u8; SIGNATURE_LENGTH],
+    #[serde(with = "hex_pubkey")]
+    public_key: [u8; PUBLIC_KEY_LENGTH],
 }
 
 impl SignedTransaction {
     pub fn verify_signature(&self) -> Result<(), CommunexError> {
-        if let Some(ref public_key) = self.transaction.public_key {
-            self.verify_signature_with_key(public_key)
-        } else {
-            Err(CommunexError::InvalidSignature("No public key available".into()))
-        }
+        self.verify_signature_with_key(&self.public_key)
     }
     
-    pub fn verify_signature_with_key(&self, public_key: &[u8]) -> Result<(), CommunexError> {
-        let public_key = PublicKey::from_bytes(public_key)
+    pub fn verify_signature_with_key(&self, public_key: &[u8; PUBLIC_KEY_LENGTH]) -> Result<(), CommunexError> {
+        let verifying_key = VerifyingKey::from_bytes(public_key)
             .map_err(|e| CommunexError::InvalidSignature(e.to_string()))?;
         
-        let signature = Signature::from_bytes(&self.signature)
-            .map_err(|e| CommunexError::InvalidSignature(e.to_string()))?;
+        let signature = Signature::from_bytes(&self.signature);
         
         let message = self.transaction.serialize_for_signing()
             .map_err(|e| CommunexError::SigningError(e.to_string()))?;
         
-        public_key.verify(&message, &signature)
+        verifying_key.verify(&message, &signature)
             .map_err(|e| CommunexError::InvalidSignature(e.to_string()))
     }
 }
@@ -196,70 +175,4 @@ pub struct RpcResponse {
 pub struct RpcError {
     pub code: i32,
     pub message: String,
-}
-
-#[derive(Debug)]
-pub struct KeyPair {
-    keypair: Keypair,
-    ss58_address: String,
-}
-
-impl KeyPair {
-    pub fn from_seed_phrase(phrase: &str) -> Result<Self, CommunexError> {
-        let mnemonic = Mnemonic::from_phrase(phrase, Language::English)
-            .map_err(|e| CommunexError::InvalidSeedPhrase(e.to_string()))?;
-        
-        let seed = Seed::new(&mnemonic, "");
-        let seed_bytes = &seed.as_bytes()[..32];
-        
-        let secret = SecretKey::from_bytes(seed_bytes)
-            .map_err(|e| CommunexError::KeyDerivationError(e.to_string()))?;
-        let public = PublicKey::from(&secret);
-        let keypair = Keypair { secret, public };
-        
-        let ss58_address = Self::generate_ss58_address(&public);
-        
-        Ok(Self {
-            keypair,
-            ss58_address,
-        })
-    }
-    
-    pub fn ss58_address(&self) -> &str {
-        &self.ss58_address
-    }
-    
-    pub fn public_key(&self) -> &[u8] {
-        self.keypair.public.as_bytes()
-    }
-    
-    pub fn derive_address(&self, index: u32) -> Result<String, CommunexError> {
-        // Derive new key using hierarchical deterministic derivation
-        let path = format!("m/44'/354'/{}'", index);
-        let derived_key = self.derive_key(&path)
-            .map_err(|e| CommunexError::KeyDerivationError(e.to_string()))?;
-        
-        Ok(Self::generate_ss58_address(&derived_key))
-    }
-    
-    fn derive_key(&self, path: &str) -> Result<PublicKey, CommunexError> {
-        // For now, we'll implement a simple derivation
-        // In production, this should use proper HD key derivation
-        let message = path.as_bytes();
-        let signature = self.keypair.sign(message);
-        let derived_bytes = &signature.to_bytes()[..32];
-        
-        PublicKey::from_bytes(derived_bytes)
-            .map_err(|e| CommunexError::KeyDerivationError(e.to_string()))
-    }
-    
-    fn generate_ss58_address(public_key: &PublicKey) -> String {
-        let mut bytes = vec![42u8]; // SS58 prefix for substrate (42)
-        bytes.extend_from_slice(public_key.as_bytes());
-        let hash = blake2b(&bytes);
-        let mut full_bytes = bytes;
-        full_bytes.extend_from_slice(&hash.as_bytes()[0..2]);
-        
-        base58::encode(&full_bytes)
-    }
 }
