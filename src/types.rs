@@ -3,9 +3,11 @@ use crate::error::CommunexError;
 use crate::crypto::{KeyPair, serde::hex_bytes};
 use sp_core::sr25519::{Public, Signature, Pair};
 use sp_core::sr25519::{PUBLIC_KEY_SERIALIZED_SIZE, SIGNATURE_SERIALIZED_SIZE};
+use std::fmt::Display;
 use std::string::String;
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
+use bs58;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -15,11 +17,21 @@ pub struct Address(String);
 impl Address {
     pub fn new(address: impl Into<String>) -> Result<Self, CommunexError> {
         let address = address.into();
-        // Basic validation: should start with "cmx1" and be of proper length
-        if !address.starts_with("cmx1") || address.len() < 8 {
+        if !address.starts_with("cmx1") {
+            return Err(CommunexError::InvalidAddress(address));
+        }
+        // Validate base58 format
+        if let Err(_) = bs58::decode(&address[4..]).into_vec() {
             return Err(CommunexError::InvalidAddress(address));
         }
         Ok(Self(address))
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BigUint(pub [u8; 32], pub u64);
+impl std::fmt::Display for BigUint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&hex::encode(&self.0))
     }
 }
 
@@ -30,23 +42,66 @@ pub struct Balance {
 }
 
 impl Balance {
-    pub fn new(amount: impl Into<String>, denom: impl Into<String>) -> Self {
-        Self {
-            amount: amount.into(),
-            denom: denom.into(),
+    pub fn new(amount: impl Into<String>, denom: impl Into<String>) -> Result<Self, CommunexError> {
+        let amount = amount.into();
+        let denom = denom.into();
+        
+        // Validate amount can be parsed as u64
+        amount.parse::<u64>()
+            .map_err(|_| CommunexError::InvalidAmount("Invalid amount format".into()))?;
+            
+        // Validate denomination
+        if !is_valid_denom(&denom) {
+            return Err(CommunexError::InvalidDenom(denom));
         }
+
+        Ok(Self { amount, denom })
     }
 
-    pub fn amount(&self) -> u64 {
-        self.amount.parse().unwrap_or(0)
+    pub fn amount(&self) -> Result<u64, CommunexError> {
+        self.amount
+            .parse()
+            .map_err(|_| CommunexError::InvalidAmount("Invalid amount format".into()))
     }
 
     pub fn denom(&self) -> &str {
         &self.denom
     }
 
-    pub fn parse(&self) -> Result<u64, CommunexError> {
-        self.amount.parse().map_err(|e: std::num::ParseIntError| CommunexError::InvalidBalance(e.to_string()))
+    pub fn from_rpc(value: &Value) -> Result<Self, CommunexError> {
+        let amount = value.get("amount")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| CommunexError::MalformedResponse("Missing amount field".into()))?;
+            
+        let denom = value.get("denom")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| CommunexError::MalformedResponse("Missing denom field".into()))?;
+
+        // Validate amount can be parsed as u64
+        amount.parse::<u64>()
+            .map_err(|_| CommunexError::InvalidAmount("Invalid amount format".into()))?;
+            
+        // Validate denomination
+        if !is_valid_denom(denom) {
+            return Err(CommunexError::InvalidDenom(denom.to_string()));
+        }
+
+        Ok(Self {
+            amount: amount.to_string(),
+            denom: denom.to_string(),
+        })
+    }
+}
+
+// Remove the parse() call on denom since we're not parsing it anymore
+fn is_valid_denom(denom: &str) -> bool {
+    const VALID_DENOMS: &[&str] = &["COMAI"];
+    VALID_DENOMS.contains(&denom)
+}
+
+impl Display for Balance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.amount, self.denom)
     }
 }
 
@@ -105,12 +160,27 @@ impl Transaction {
     }
 
     pub fn validate(&self) -> Result<(), CommunexError> {
-        // Basic validation
+        // Validate addresses
         if !self.from.starts_with("cmx1") || !self.to.starts_with("cmx1") {
-            return Err(CommunexError::InvalidTransaction(
-                "Invalid address format".into(),
-            ));
+            return Err(CommunexError::InvalidAddress("Invalid address format".into()));
         }
+
+        // Validate amount is not zero
+        match self.amount.parse::<u64>() {
+            Ok(amount) if amount == 0 => {
+                return Err(CommunexError::InvalidAmount("Amount cannot be zero".into()));
+            }
+            Err(_) => {
+                return Err(CommunexError::InvalidAmount("Invalid amount format".into()));
+            }
+            _ => {}
+        }
+
+        // Validate denomination
+        if !is_valid_denom(&self.denom) {
+            return Err(CommunexError::InvalidDenom(self.denom.clone()));
+        }
+
         Ok(())
     }
 

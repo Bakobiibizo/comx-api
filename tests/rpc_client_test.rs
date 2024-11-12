@@ -1,10 +1,11 @@
-use comx_api::rpc::{RpcClient, BatchRequest, RpcErrorDetail};
+use comx_api::rpc::{RpcClient, BatchRequest};
 use comx_api::types::{Balance, FromRpcResponse};
 use comx_api::error::CommunexError;
 use serde_json::json;
 use std::time::Duration;
 use mockito::{Server, ServerOpts};
 use serial_test::serial;
+use comx_api::types::RpcRequest;
 
 async fn setup_test_server(response: serde_json::Value) -> (Server, RpcClient) {
     let opts = ServerOpts::default();
@@ -42,8 +43,8 @@ async fn test_single_rpc_request() {
     ).await;
 
     assert!(response.is_ok());
-    let balance = Balance::from_rpc(response.unwrap()).unwrap();
-    assert_eq!(balance.amount(), 1000000);
+    let balance = Balance::from_rpc(&response.unwrap()).unwrap();
+    assert_eq!(balance.amount().unwrap(), 1000000);
     assert_eq!(balance.denom(), "COMAI");
 }
 
@@ -92,16 +93,16 @@ async fn test_batch_request() {
     assert_eq!(responses.errors.len(), 1);
 
     // Check first successful response
-    let first_balance = Balance::from_rpc(responses.successes[0].clone()).unwrap();
-    assert_eq!(first_balance.amount(), 1000000);
+    let first_balance = Balance::from_rpc(&responses.successes[0]).unwrap();
+    assert_eq!(first_balance.amount().unwrap(), 1000000);
 
     // Check error
     assert_eq!(responses.errors[0].code, -32602);
     assert_eq!(responses.errors[0].message, "Invalid params");
 
     // Check second successful response
-    let second_balance = Balance::from_rpc(responses.successes[1].clone()).unwrap();
-    assert_eq!(second_balance.amount(), 2000000);
+    let second_balance = Balance::from_rpc(&responses.successes[1]).unwrap();
+    assert_eq!(second_balance.amount().unwrap(), 2000000);
 }
 
 #[tokio::test]
@@ -145,3 +146,20 @@ async fn test_connection_timeout() {
     assert!(response.is_err());
     assert!(matches!(response.unwrap_err(), CommunexError::ConnectionError { .. }));
 } 
+
+
+#[test]
+fn test_rpc_request_serialization() {
+    let request = RpcRequest::new(
+        "query_balance",
+        json!({
+            "address": "cmx1abc123...",
+            "denom": "COMAI"
+        }),
+    );
+
+    let serialized = serde_json::to_string(&request).unwrap();
+    assert!(serialized.contains("query_balance"));
+    assert!(serialized.contains("jsonrpc"));
+    assert!(serialized.contains("2.0"));
+}

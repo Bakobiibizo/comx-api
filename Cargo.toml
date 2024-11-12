@@ -16,6 +16,8 @@ rand = "0.8"
 hex = "0.4"
 sp-core = "34.0.0"
 reqwest = { version = "0.11", features = ["json"] }
+log = "0.4"
+num-bigint = "0.4"
 
 [dev-dependencies]
 mockito = "1.2"

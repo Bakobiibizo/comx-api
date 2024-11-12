@@ -44,6 +44,12 @@ pub enum CommunexError {
 
     #[error("Invalid balance: {0}")]
     InvalidBalance(String),
+
+    #[error("Invalid amount: {0}")]
+    InvalidAmount(String),
+
+    #[error("Invalid denomination: {0}")]
+    InvalidDenom(String),
 }
 
 #[derive(Debug, PartialEq)]
