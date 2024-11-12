@@ -81,6 +81,30 @@ let signed = tx.sign(&keypair)?;
 assert!(signed.verify_signature().is_ok());
 ```
 
+### RPC Operations
+
+```rust
+use comx_api::rpc::{RpcClient, BatchRequest};
+use serde_json::json;
+
+// Create RPC client
+let client = RpcClient::new("http://your-node-url");
+
+// Single request
+let balance = client.request(
+    "query_balance",
+    json!({
+        "address": "cmx1abc123..."
+    })
+).await?;
+
+// Batch request
+let mut batch = BatchRequest::new();
+batch.add_request("query_balance", json!({"address": "cmx1abc123..."}));
+batch.add_request("query_balance", json!({"address": "cmx1def456..."}));
+let responses = client.batch_request(batch).await?;
+```
+
 ## Development
 
 ### Prerequisites
