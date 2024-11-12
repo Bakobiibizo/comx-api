@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+#[derive(Debug)]
 pub struct QueryMapConfig {
     pub refresh_interval: Duration,
     pub cache_duration: Duration,

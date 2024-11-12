@@ -1,9 +1,12 @@
 use std::time::Duration;
+use core::clone::Clone;
 use reqwest::{Client as HttpClient, ClientBuilder};
 use serde_json::{Value, json};
 use crate::error::{CommunexError, RpcErrorDetail};
 use super::batch::BatchRequest;
 
+
+#[derive(Debug, Clone)]
 pub struct RpcClient {
     url: String,
     client: HttpClient,

@@ -3,11 +3,26 @@ use comx_api::query_map::{QueryMap, QueryMapConfig};
 use comx_api::types::{Address, Balance};
 use comx_api::error::CommunexError;
 use tokio::time::{Duration, sleep};
-use std::sync::Arc;
+use serde_json::json;
+use mockito::{Server, ServerOpts};
 use serial_test::serial;
 
 const TEST_ADDRESS: &str = "cmx1abc123def456";
 const TEST_STAKE_ADDRESS: &str = "cmx1def456abc789";
+
+async fn setup_test_server(response: serde_json::Value) -> (Server, RpcClient) {
+    let opts = ServerOpts::default();
+    let mut server = Server::new_with_opts_async(opts).await;
+    
+    let _m = server.mock("POST", "/")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(response.to_string())
+        .create();
+
+    let client = RpcClient::new(server.url());
+    (server, client)
+}
 
 #[tokio::test]
 #[serial]
@@ -35,13 +50,13 @@ async fn test_balance_query() {
     
     assert!(balance.is_ok());
     let balance = balance.unwrap();
-    assert_eq!(balance.amount(), "1000000");
+    assert_eq!(balance.amount(), Ok(1000000));
     assert_eq!(balance.denom(), "COMAI");
 }
 
 #[tokio::test]
 #[serial]
-async fn test_stake_relationships() {
+async fn test_stake_relationships() -> Result<(), CommunexError> {
     let (_server, client) = setup_test_server(json!({
         "stake_from": ["addr1", "addr2"],
         "stake_to": ["addr3", "addr4"],
@@ -62,11 +77,13 @@ async fn test_stake_relationships() {
     let stake_to = query_map.get_stake_to(TEST_ADDRESS).await?;
     assert_eq!(stake_to.len(), 2);
     assert!(stake_to.contains(&Address::new("addr3").unwrap()));
+    
+    Ok(())
 }
 
 #[tokio::test]
 #[serial]
-async fn test_cache_refresh() {
+async fn test_cache_refresh() -> Result<(), CommunexError> {
     let (_server, client) = setup_test_server(json!({
         "amount": "1000000",
         "denom": "COMAI"
@@ -89,11 +106,13 @@ async fn test_cache_refresh() {
     let balance2 = query_map.get_balance(TEST_ADDRESS).await?;
     
     assert!(query_map.cache_stats().refresh_count > 0);
+    
+    Ok(())
 }
 
 #[tokio::test]
 #[serial]
-async fn test_batch_balance_queries() {
+async fn test_batch_balance_queries() -> Result<(), CommunexError> {
     let addresses = vec![
         "cmx1abc123def456",
         "cmx1def456abc789",
@@ -112,9 +131,11 @@ async fn test_batch_balance_queries() {
     let balances = query_map.get_balances(&addresses).await?;
     
     assert_eq!(balances.len(), 3);
-    assert_eq!(balances[0].amount(), "1000000");
-    assert_eq!(balances[1].amount(), "2000000");
-    assert_eq!(balances[2].amount(), "3000000");
+    assert_eq!(balances[0].amount(), Ok(1000000));
+    assert_eq!(balances[1].amount(), Ok(2000000));
+    assert_eq!(balances[2].amount(), Ok(3000000));
+    
+    Ok(())
 }
 
 #[tokio::test]
@@ -132,4 +153,35 @@ async fn test_error_handling() {
     
     assert!(result.is_err());
     assert!(matches!(result.unwrap_err(), CommunexError::RpcError { .. }));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_query_map_creation_validation() {
+    // Test invalid refresh interval
+    let client = RpcClient::new("http://test-node");
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_millis(100), // Too short
+        cache_duration: Duration::from_secs(600),
+    };
+    
+    let result = QueryMap::new(client.clone(), config);
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        CommunexError::CommunexError(msg) if msg.contains("at least 1 second")
+    ));
+
+    // Test invalid cache duration
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_secs(300),
+        cache_duration: Duration::from_secs(200),  // Shorter than refresh
+    };
+    
+    let result = QueryMap::new(client, config);
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        CommunexError::CommunexError(msg) if msg.contains("must be longer than refresh")
+    ));
 } 

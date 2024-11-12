@@ -11,7 +11,7 @@ use bs58;
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Address(String);
 
 impl Address {

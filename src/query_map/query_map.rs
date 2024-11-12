@@ -1,12 +1,13 @@
 use std::sync::Arc;
-use tokio::time::Duration;
 use crate::{
     rpc::RpcClient,
     types::{Address, Balance},
     error::CommunexError,
 };
 use super::QueryMapConfig;
+use tokio::time::{Duration, sleep};
 
+#[derive(Debug)]
 pub struct QueryMap {
     client: Arc<RpcClient>,
     config: QueryMapConfig,
@@ -14,6 +15,20 @@ pub struct QueryMap {
 
 impl QueryMap {
     pub fn new(client: RpcClient, config: QueryMapConfig) -> Result<Self, CommunexError> {
+        // Validate minimum refresh interval (e.g., 1 second)
+        if config.refresh_interval < Duration::from_secs(1) {
+            return Err(CommunexError::CommunexError(
+                "Refresh interval must be at least 1 second".to_string()
+            ));
+        }
+
+        // Validate cache duration is longer than refresh interval
+        if config.cache_duration <= config.refresh_interval {
+            return Err(CommunexError::CommunexError(
+                "Cache duration must be longer than refresh interval".to_string()
+            ));
+        }
+
         Ok(Self {
             client: Arc::new(client),
             config,
