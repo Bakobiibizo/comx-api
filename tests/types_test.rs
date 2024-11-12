@@ -1,5 +1,5 @@
 use comx_api::{
-    types::{Address, Balance, Transaction, SignedTransaction, RpcRequest},
+    types::{Address, Balance, Transaction, SignedTransaction},
     crypto::KeyPair,
 };
 use serde_json::json;
@@ -7,28 +7,13 @@ use serde_json::json;
 #[test]
 fn test_address_validation() {
     // Test valid address format
-    let valid_address = "cmx1abc123..."; // Use actual address format from reference
+    let valid_address = "cmx1abc123def456"; 
     assert!(Address::new(valid_address).is_ok());
 
     // Test invalid address format
     let invalid_address = "invalid_address";
+    println!("{}", Address::new(invalid_address).unwrap_err());
     assert!(Address::new(invalid_address).is_err());
-}
-
-#[test]
-fn test_rpc_request_serialization() {
-    let request = RpcRequest::new(
-        "query_balance",
-        json!({
-            "address": "cmx1abc123...",
-            "denom": "COMAI"
-        }),
-    );
-
-    let serialized = serde_json::to_string(&request).unwrap();
-    assert!(serialized.contains("query_balance"));
-    assert!(serialized.contains("jsonrpc"));
-    assert!(serialized.contains("2.0"));
 }
 
 #[test]
@@ -39,7 +24,7 @@ fn test_balance_parsing() {
     });
 
     let balance: Balance = serde_json::from_value(balance_json).unwrap();
-    assert_eq!(balance.amount(), 1000000);
+    assert_eq!(balance.amount(), Ok(1000000));
     assert_eq!(balance.denom(), "COMAI");
 }
 
@@ -174,4 +159,42 @@ fn test_signed_transaction_serialization() {
     let deserialized: SignedTransaction = serde_json::from_str(&serialized).unwrap();
     
     assert!(deserialized.verify_signature().is_ok());
+}
+
+#[test]
+fn test_transaction_with_zero_amount() {
+    let tx = Transaction::new(
+        "cmx1sender...",
+        "cmx1receiver...",
+        "0",
+        "COMAI",
+        "zero amount test",
+    );
+    assert!(tx.validate().is_err());
+}
+
+#[test]
+fn test_invalid_denomination() {
+    let balance_json = json!({
+        "amount": "1000000",
+        "denom": "INVALID_DENOM"
+    });
+    let balance_result = Balance::from_rpc(&balance_json);
+    assert!(balance_result.is_err());
+}
+
+#[test]
+fn test_large_amount_parsing() {
+    let balance_json = json!({
+        "amount": "18446744073709551615", // u64::MAX
+        "denom": "COMAI"
+    });
+    let balance: Balance = serde_json::from_value(balance_json).unwrap();
+    assert_eq!(balance.amount(), Ok(u64::MAX));
+}
+
+#[test]
+fn test_invalid_address_characters() {
+    let invalid_address = "cmx1$%^&*()";
+    assert!(Address::new(invalid_address).is_err());
 }

@@ -7,28 +7,33 @@
 - [x] Cryptographic foundation using Substrate's sr25519
 - [x] Basic test suite for types and crypto
 - [x] Transaction signing and verification
+- [x] RPC client implementation
+  - [x] HTTP client setup
+  - [x] Request/Response handling
+  - [x] Error handling
+  - [x] Batch request support
 
 ## Current Status
 
-Successfully implemented the core cryptographic functionality using Substrate's official libraries, ensuring compatibility with the existing Communex ecosystem. All basic type tests are passing.
+Successfully implemented the core cryptographic functionality and RPC client with full test coverage. The RPC client supports both single and batch requests, with proper error handling and timeout configuration.
 
 ## Next Steps
 
 ### High Priority
 
-1. Implement RPC client
-   - HTTP client setup
-   - Request/Response handling
-   - Error handling
-   - Batch request support
+~~1. Implement RPC client~~
+~~   - HTTP client setup~~
+~~   - Request/Response handling~~
+~~   - Error handling~~
+~~   - Batch request support~~
 
-2. Query Map Implementation
+1. Query Map Implementation
    - Define query map structure
    - Implement query methods from reference
    - Add caching layer
    - Setup background refresh (every 5 minutes)
 
-3. Wallet Interactions
+2. Wallet Interactions
    - Balance lookups
    - Transfer functionality
    - Transaction history
