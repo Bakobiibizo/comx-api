@@ -1,7 +1,9 @@
-use comx_api::rpc::RpcClient;
-use comx_api::query_map::{QueryMap, QueryMapConfig};
-use comx_api::types::{Address, Balance};
-use comx_api::error::CommunexError;
+use comx_api::{
+    rpc::RpcClient,
+    types::Address,
+    query_map::{QueryMap, QueryMapConfig},
+    error::CommunexError,
+};
 use tokio::time::{Duration, sleep};
 use serde_json::json;
 use mockito::{Server, ServerOpts};
@@ -196,30 +198,99 @@ async fn test_error_handling() -> Result<(), CommunexError> {
 #[tokio::test]
 #[serial]
 async fn test_query_map_creation_validation() {
-    // Test invalid refresh interval
-    let client = RpcClient::new("http://test-node");
+    let (_server, client) = setup_test_server(json!({})).await;
+    
+    // Test with invalid refresh interval
     let config = QueryMapConfig {
-        refresh_interval: Duration::from_millis(100), // Too short
+        refresh_interval: Duration::from_millis(100),
         cache_duration: Duration::from_secs(600),
     };
-    
     let result = QueryMap::new(client.clone(), config);
-    assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        CommunexError::CommunexError(msg) if msg.contains("at least 1 second")
-    ));
-
-    // Test invalid cache duration
-    let config = QueryMapConfig {
-        refresh_interval: Duration::from_secs(300),
-        cache_duration: Duration::from_secs(200),  // Shorter than refresh
-    };
     
-    let result = QueryMap::new(client, config);
-    assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        CommunexError::CommunexError(msg) if msg.contains("must be longer than refresh")
-    ));
+    // Updated assertion to match ConfigError variant
+    assert!(matches!(result.unwrap_err(), CommunexError::ConfigError(msg) if 
+        msg.contains("at least 1 second")));
+
+    // Test with invalid cache duration
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_secs(10),
+        cache_duration: Duration::from_secs(5),
+    };
+    assert!(matches!(QueryMap::new(client, config).unwrap_err(), 
+        CommunexError::ConfigError(msg) if msg.contains("longer than refresh")));
+}
+
+#[tokio::test]
+async fn test_empty_batch_request() -> Result<(), CommunexError> {
+    let (_server, client) = setup_test_server(json!([])).await;
+    let query_map = QueryMap::new(client, QueryMapConfig::default())?;
+    
+    let empty_addresses: Vec<&str> = vec![];
+    let balances = query_map.get_balances(&empty_addresses).await?;
+    assert!(balances.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_invalid_config() {
+    let (_server, client) = setup_test_server(json!({})).await;
+    
+    // Test refresh interval too short
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_millis(100),
+        cache_duration: Duration::from_secs(600),
+    };
+    assert!(QueryMap::new(client.clone(), config).is_err());
+
+    // Test cache duration shorter than refresh
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_secs(10),
+        cache_duration: Duration::from_secs(5),
+    };
+    assert!(QueryMap::new(client, config).is_err());
+}
+
+#[tokio::test]
+async fn test_malformed_stake_response() -> Result<(), CommunexError> {
+    let (_server, client) = setup_test_server(json!({
+        "not_stake_from": []
+    })).await;
+    
+    let query_map = QueryMap::new(client, QueryMapConfig::default())?;
+    let result = query_map.get_stake_from(TEST_ADDRESS).await;
+    
+    assert!(matches!(result, Err(CommunexError::ParseError(_))));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_batch_request_partial_failure() -> Result<(), CommunexError> {
+    let batch_response = json!([
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "result": {
+                "amount": "1000000",
+                "denom": "COMAI"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32602,
+                "message": "Invalid address"
+            }
+        }
+    ]);
+    
+    let (_server, client) = setup_test_server(batch_response).await;
+    let query_map = QueryMap::new(client, QueryMapConfig::default())?;
+    
+    let addresses = vec!["cmx1valid", "cmx1invalid"];
+    let response = query_map.get_balances(&addresses).await?;
+    
+    assert_eq!(response.len(), 1);
+    assert_eq!(response[0].amount()?, 1000000);
+    Ok(())
 } 

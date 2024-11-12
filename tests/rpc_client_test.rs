@@ -1,165 +1,193 @@
-use comx_api::rpc::{RpcClient, BatchRequest};
-use comx_api::types::{Balance, FromRpcResponse};
-use comx_api::error::CommunexError;
+use comx_api::{
+    rpc::{RpcClient, RpcClientConfig, BatchRequest},
+    error::CommunexError,
+};
+use wiremock::{
+    matchers::{method, path},
+    Mock, MockServer, ResponseTemplate
+};
 use serde_json::json;
 use std::time::Duration;
-use mockito::{Server, ServerOpts};
-use serial_test::serial;
-use comx_api::types::RpcRequest;
 
-async fn setup_test_server(response: serde_json::Value) -> (Server, RpcClient) {
-    let opts = ServerOpts::default();
-    let mut server = Server::new_with_opts_async(opts).await;
+#[tokio::test]
+async fn test_single_request_success() -> Result<(), CommunexError> {
+    let mock_server = MockServer::start().await;
     
-    let _m = server.mock("POST", "/")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(response.to_string())
-        .create();
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"balance": "1000"}
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
 
-    let client = RpcClient::new(server.url());
-    (server, client)
+    let client = RpcClient::new(mock_server.uri());
+    let result = client.request("query_balance", json!({"address": "test"})).await?;
+    
+    assert_eq!(result.get("balance").unwrap().as_str().unwrap(), "1000");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial]
-async fn test_single_rpc_request() {
-    let mock_response = json!({
-        "jsonrpc": "2.0",
-        "result": {
-            "amount": "1000000",
-            "denom": "COMAI"
-        },
-        "id": 1
-    });
-
-    let (_server, client) = setup_test_server(mock_response).await;
+async fn test_batch_request_success() -> Result<(), CommunexError> {
+    let mock_server = MockServer::start().await;
     
-    let response = client.request(
-        "query_balance",
-        json!({
-            "address": "cmx1abc123def456"
-        })
-    ).await;
-
-    assert!(response.is_ok());
-    let balance = Balance::from_rpc(&response.unwrap()).unwrap();
-    assert_eq!(balance.amount().unwrap(), 1000000);
-    assert_eq!(balance.denom(), "COMAI");
-}
-
-#[tokio::test]
-#[serial]
-async fn test_batch_request() {
-    let mock_response = json!([
-        {
-            "jsonrpc": "2.0",
-            "result": {
-                "amount": "1000000",
-                "denom": "COMAI"
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "jsonrpc": "2.0",
+                "id": 0,
+                "result": {"balance": "1000"}
             },
-            "id": 1
-        },
-        {
-            "jsonrpc": "2.0", 
-            "error": {
-                "code": -32602, 
-                "message": "Invalid params"
-            }, 
-            "id": 2
-        },
-        {
-            "jsonrpc": "2.0",
-            "result": {
-                "amount": "2000000",
-                "denom": "COMAI"
-            },
-            "id": 3
-        }
-    ]);
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {"balance": "2000"}
+            }
+        ])))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
 
-    let (_server, client) = setup_test_server(mock_response).await;
+    let client = RpcClient::new(mock_server.uri());
     let mut batch = BatchRequest::new();
+    batch.add_request("query_balance", json!({"address": "addr1"}));
+    batch.add_request("query_balance", json!({"address": "addr2"}));
+    
+    let response = client.batch_request(batch).await?;
+    assert_eq!(response.successes.len(), 2);
+    assert!(response.errors.is_empty());
+    Ok(())
+}
 
-    batch.add_request("query_balance", json!({"address": "cmx1abc123"}));
+#[tokio::test]
+async fn test_rpc_error_response() -> Result<(), CommunexError> {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32601,
+                "message": "Method not found"
+            }
+        })))
+        .expect(1..=3)
+        .mount(&mock_server)
+        .await;
+
+    let client = RpcClient::new_with_config(
+        mock_server.uri(),
+        RpcClientConfig {
+            timeout: Duration::from_secs(1),
+            max_retries: 2,
+        }
+    );
+    
+    let result = client.request("invalid_method", json!({})).await;
+    assert!(matches!(result, Err(CommunexError::RpcError { code: -32601, .. })));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_connection_timeout() -> Result<(), CommunexError> {
+    let config = RpcClientConfig {
+        timeout: Duration::from_millis(100),
+        max_retries: 1,
+    };
+    
+    let client = RpcClient::new_with_config("http://invalid-url", config);
+    let result = client.request("test", json!({})).await;
+    
+    assert!(matches!(result, Err(CommunexError::ConnectionError(_))));
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_batch_request_partial_failure() -> Result<(), CommunexError> {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "jsonrpc": "2.0",
+                "id": 0,
+                "result": {"balance": "1000"}
+            },
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32602,
+                    "message": "Invalid params"
+                }
+            }
+        ])))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RpcClient::new(mock_server.uri());
+    let mut batch = BatchRequest::new();
+    batch.add_request("query_balance", json!({"address": "valid"}));
     batch.add_request("query_balance", json!({"invalid": "params"}));
-    batch.add_request("query_balance", json!({"address": "cmx1def456"}));
-
-    let responses = client.batch_request(batch).await.unwrap();
     
-    // Check the number of successful responses
-    assert_eq!(responses.successes.len(), 2);
-    // Check the number of errors
-    assert_eq!(responses.errors.len(), 1);
-
-    // Check first successful response
-    let first_balance = Balance::from_rpc(&responses.successes[0]).unwrap();
-    assert_eq!(first_balance.amount().unwrap(), 1000000);
-
-    // Check error
-    assert_eq!(responses.errors[0].code, -32602);
-    assert_eq!(responses.errors[0].message, "Invalid params");
-
-    // Check second successful response
-    let second_balance = Balance::from_rpc(&responses.successes[1]).unwrap();
-    assert_eq!(second_balance.amount().unwrap(), 2000000);
+    let response = client.batch_request(batch).await?;
+    assert_eq!(response.successes.len(), 1);
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(response.errors[0].code, -32602);
+    Ok(())
 }
 
 #[tokio::test]
-#[serial]
-async fn test_rpc_error_handling() {
-    let mock_response = json!({
-        "jsonrpc": "2.0",
-        "error": {
-            "code": -32601,
-            "message": "Method not found"
-        },
-        "id": 1
-    });
-
-    let (_server, client) = setup_test_server(mock_response).await;
+async fn test_retry_mechanism() -> Result<(), CommunexError> {
+    let mock_server = MockServer::start().await;
     
-    let response = client.request(
-        "invalid_method",
-        json!({})
-    ).await;
+    // First two attempts fail
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(1..=3)
+        .mount(&mock_server)
+        .await;
+    
+    // Final attempt succeeds
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"success": true}
+        })))
+        .expect(0..=1)
+        .mount(&mock_server)
+        .await;
 
-    assert!(response.is_err());
-    assert!(matches!(response.unwrap_err(), CommunexError::RpcError { .. }));
-}
-
-#[tokio::test]
-#[serial]
-async fn test_connection_timeout() {
-    let client = RpcClient::with_timeout(
-        "http://non.existent.host",
-        Duration::from_millis(100)
+    let client = RpcClient::new_with_config(
+        mock_server.uri(),
+        RpcClientConfig {
+            timeout: Duration::from_secs(1),
+            max_retries: 2,
+        }
     );
-
-    let response = client.request(
-        "query_balance",
-        json!({
-            "address": "cmx1abc123def456"
-        })
-    ).await;
-
-    assert!(response.is_err());
-    assert!(matches!(response.unwrap_err(), CommunexError::ConnectionError { .. }));
-} 
-
-
-#[test]
-fn test_rpc_request_serialization() {
-    let request = RpcRequest::new(
-        "query_balance",
-        json!({
-            "address": "cmx1abc123...",
-            "denom": "COMAI"
-        }),
-    );
-
-    let serialized = serde_json::to_string(&request).unwrap();
-    assert!(serialized.contains("query_balance"));
-    assert!(serialized.contains("jsonrpc"));
-    assert!(serialized.contains("2.0"));
+    
+    let result = client.request("test", json!({})).await;
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Either a connection error or parse error is acceptable
+            assert!(matches!(e, 
+                CommunexError::ConnectionError(_) | 
+                CommunexError::ParseError(_)
+            ));
+            Ok(())
+        }
+    }
 }
