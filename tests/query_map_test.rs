@@ -14,10 +14,22 @@ async fn setup_test_server(response: serde_json::Value) -> (Server, RpcClient) {
     let opts = ServerOpts::default();
     let mut server = Server::new_with_opts_async(opts).await;
     
+    let rpc_response = if response.is_array() {
+        response
+    } else if response.get("error").is_some() {
+        response
+    } else {
+        json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": response
+        })
+    };
+    
     let _m = server.mock("POST", "/")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(response.to_string())
+        .with_body(rpc_response.to_string())
         .create();
 
     let client = RpcClient::new(server.url());
@@ -39,32 +51,31 @@ async fn test_query_map_creation() {
 
 #[tokio::test]
 #[serial]
-async fn test_balance_query() {
+async fn test_balance_query() -> Result<(), CommunexError> {
     let (_server, client) = setup_test_server(json!({
         "amount": "1000000",
         "denom": "COMAI"
     })).await;
     
     let query_map = QueryMap::new(client, QueryMapConfig::default()).unwrap();
-    let balance = query_map.get_balance(TEST_ADDRESS).await;
+    let balance = query_map.get_balance(TEST_ADDRESS).await?;
     
-    assert!(balance.is_ok());
-    let balance = balance.unwrap();
     assert_eq!(balance.amount(), Ok(1000000));
     assert_eq!(balance.denom(), "COMAI");
+    Ok(())
 }
 
 #[tokio::test]
 #[serial]
 async fn test_stake_relationships() -> Result<(), CommunexError> {
     let (_server, client) = setup_test_server(json!({
-        "stake_from": ["addr1", "addr2"],
-        "stake_to": ["addr3", "addr4"],
+        "stake_from": ["cmx1addr1", "cmx1addr2"],
+        "stake_to": ["cmx1addr3", "cmx1addr4"],
         "amounts": {
-            "addr1": "100000",
-            "addr2": "200000",
-            "addr3": "300000",
-            "addr4": "400000"
+            "cmx1addr1": "100000",
+            "cmx1addr2": "200000",
+            "cmx1addr3": "300000",
+            "cmx1addr4": "400000"
         }
     })).await;
     
@@ -72,11 +83,11 @@ async fn test_stake_relationships() -> Result<(), CommunexError> {
     
     let stake_from = query_map.get_stake_from(TEST_ADDRESS).await?;
     assert_eq!(stake_from.len(), 2);
-    assert!(stake_from.contains(&Address::new("addr1").unwrap()));
+    assert!(stake_from.contains(&Address::new("cmx1addr1").unwrap()));
     
     let stake_to = query_map.get_stake_to(TEST_ADDRESS).await?;
     assert_eq!(stake_to.len(), 2);
-    assert!(stake_to.contains(&Address::new("addr3").unwrap()));
+    assert!(stake_to.contains(&Address::new("cmx1addr3").unwrap()));
     
     Ok(())
 }
@@ -97,16 +108,15 @@ async fn test_cache_refresh() -> Result<(), CommunexError> {
     let query_map = QueryMap::new(client, config).unwrap();
     
     // Initial query
-    let balance1 = query_map.get_balance(TEST_ADDRESS).await?;
+    let _initial_balance = query_map.get_balance(TEST_ADDRESS).await?;
     
     // Wait for refresh
     sleep(Duration::from_secs(2)).await;
     
     // Should trigger new query
-    let balance2 = query_map.get_balance(TEST_ADDRESS).await?;
+    let _refreshed_balance = query_map.get_balance(TEST_ADDRESS).await?;
     
     assert!(query_map.cache_stats().refresh_count > 0);
-    
     Ok(())
 }
 
@@ -119,29 +129,51 @@ async fn test_batch_balance_queries() -> Result<(), CommunexError> {
         "cmx1ghi789jkl012"
     ];
     
-    let (_server, client) = setup_test_server(json!({
-        "balances": {
-            "cmx1abc123def456": {"amount": "1000000", "denom": "COMAI"},
-            "cmx1def456abc789": {"amount": "2000000", "denom": "COMAI"},
-            "cmx1ghi789jkl012": {"amount": "3000000", "denom": "COMAI"}
+    // Note: For batch requests, we need to send an array directly, not wrapped in a result
+    let mock_response = json!([
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "result": {
+                "amount": "1000000",
+                "denom": "COMAI"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "amount": "2000000",
+                "denom": "COMAI"
+            }
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "amount": "3000000",
+                "denom": "COMAI"
+            }
         }
-    })).await;
+    ]);
     
+    let (_server, client) = setup_test_server(mock_response).await;
     let query_map = QueryMap::new(client, QueryMapConfig::default()).unwrap();
     let balances = query_map.get_balances(&addresses).await?;
     
     assert_eq!(balances.len(), 3);
-    assert_eq!(balances[0].amount(), Ok(1000000));
-    assert_eq!(balances[1].amount(), Ok(2000000));
-    assert_eq!(balances[2].amount(), Ok(3000000));
-    
+    assert_eq!(balances[0].amount()?, 1000000);
+    assert_eq!(balances[1].amount()?, 2000000);
+    assert_eq!(balances[2].amount()?, 3000000);
     Ok(())
 }
 
 #[tokio::test]
 #[serial]
-async fn test_error_handling() {
+async fn test_error_handling() -> Result<(), CommunexError> {
     let (_server, client) = setup_test_server(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
         "error": {
             "code": -32601,
             "message": "Method not found"
@@ -152,7 +184,13 @@ async fn test_error_handling() {
     let result = query_map.get_balance(TEST_ADDRESS).await;
     
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), CommunexError::RpcError { .. }));
+    if let Err(CommunexError::RpcError { code, message }) = result {
+        assert_eq!(code, -32601);
+        assert!(message.contains("Method not found"));
+        Ok(())
+    } else {
+        panic!("Expected RpcError, got {:?}", result);
+    }
 }
 
 #[tokio::test]

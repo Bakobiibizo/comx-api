@@ -2,9 +2,8 @@ use std::time::Duration;
 use core::clone::Clone;
 use reqwest::{Client as HttpClient, ClientBuilder};
 use serde_json::{Value, json};
-use crate::error::{CommunexError, RpcErrorDetail};
-use super::batch::BatchRequest;
-
+use crate::error::{self, CommunexError, RpcErrorDetail};
+use crate::rpc::BatchRequest;
 
 #[derive(Debug, Clone)]
 pub struct RpcClient {
@@ -97,32 +96,62 @@ impl RpcClient {
     }
 
     pub async fn batch_request(&self, batch: BatchRequest) -> Result<BatchResponse, CommunexError> {
-        let responses = self.send_batch_request(batch).await?;
+        let response = self.client.post(&self.url)
+            .json(&batch.requests)
+            .send()
+            .await
+            .map_err(|e| CommunexError::ConnectionError(e.to_string()))?
+            .json::<Vec<Value>>()
+            .await
+            .map_err(|e| CommunexError::ParseError(e.to_string()))?;
+
         let mut successes = Vec::new();
         let mut errors = Vec::new();
 
-        for resp in responses {
+        for resp in response {
             if let Some(error) = resp.get("error") {
-                errors.push(RpcErrorDetail {
-                    code: error["code"].as_i64().unwrap_or(0) as i32,
-                    message: error["message"].as_str().unwrap_or("").to_string(),
-                    request_id: resp["id"].as_u64(),
-                });
+                let code = error.get("code")
+                    .and_then(|c| c.as_i64())
+                    .unwrap_or(-32603) as i32;
+                let message = error.get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown error")
+                    .to_string();
+                
+                errors.push(RpcErrorDetail { code, message, request_id: None });
             } else if let Some(result) = resp.get("result") {
                 successes.push(result.clone());
             }
         }
 
-        Ok(BatchResponse { successes, errors })
+        Ok(BatchResponse {
+            successes,
+            errors,
+        })
     }
 
-    async fn send_batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
+    pub async fn batch_balance_request(&self, addresses: &[&str]) -> Result<BatchResponse, CommunexError> {
+        let mut batch = BatchRequest::new();
+        
+        for address in addresses {
+            batch.add_request(
+                "query_balance",
+                json!({
+                    "address": address
+                })
+            );
+        }
+
+        self.batch_request(batch).await
+    }
+
+    pub async fn send_batch_request(&self, batch: BatchRequest) -> Result<Vec<Value>, CommunexError> {
         let mut requests = Vec::new();
-        for (method, params) in batch.into_requests().iter() {
+        for request in batch.requests.iter() {
             requests.push(json!({
-                "jsonrpc": "2.0",
-                "method": method,
-                "params": params,
+                "jsonrpc": "2.0", 
+                "method": request["method"],
+                "params": request["params"],
                 "id": 1
             }));
     }   

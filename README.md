@@ -6,9 +6,9 @@ A Rust implementation of the Communex blockchain client API, optimized for high 
 
 - SR25519 cryptographic operations using Substrate primitives
 - Async RPC client with batch request support (requires tokio runtime)
-- Wallet management and transaction signing
-- Query map caching with automatic updates
-- Compatible with existing Communex ecosystem
+- Query Map for efficient blockchain state queries
+- Proper error handling and response validation
+- Full test coverage with mocked responses
 
 ## Installation
 
@@ -23,65 +23,36 @@ tokio = { version = "1.0", features = ["full"] }
 ## Quick Start
 
 ```rust
-use comx_api::{KeyPair, Transaction};
+use comx_api::{QueryMap, QueryMapConfig};
+use std::time::Duration;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-// Create a keypair from seed phrase
-    let keypair = KeyPair::from_seed_phrase(
-    "wait swarm general shield hope target rebuild profit later pepper under hunt"
-)?;
-// Create and sign a transaction
-let tx = Transaction::new(
-    keypair.ss58_address(),
-    "destination_address",
-    "1000000",
-    "COMAI",
-    "transfer tokens"
-);
-let signed_tx = tx.sign(&keypair)?;
-Ok(())
+    // Create QueryMap with default configuration
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_secs(300), // 5 minutes
+        cache_duration: Duration::from_secs(600),   // 10 minutes
+    };
+    
+    let query_map = QueryMap::new(client, config)?;
+    
+    // Query balance
+    let balance = query_map.get_balance("cmx1abc...").await?;
+    println!("Balance: {} {}", balance.amount()?, balance.denom());
+    
+    // Batch balance query
+    let addresses = vec!["cmx1abc...", "cmx1def..."];
+    let balances = query_map.get_balances(&addresses).await?;
+    
+    // Query stake relationships
+    let stake_from = query_map.get_stake_from("cmx1abc...").await?;
+    let stake_to = query_map.get_stake_to("cmx1abc...").await?;
+    
+    Ok(())
 }
 ```
 
-## Usage
-
-### Key Management
-
-```rust
-use comx_api::KeyPair;
-
-// Create from seed phrase
-let keypair = KeyPair::from_seed_phrase("your seed phrase")?;
-
-// Get SS58 address
-let address = keypair.ss58_address();
-
-// Derive child address
-let derived = keypair.derive_address(0)?;
-```
-
-### Transaction Operations
-
-```rust
-use comx_api::Transaction;
-
-// Create transaction
-let tx = Transaction::new(
-    from_address,
-    to_address,
-    amount,
-    denom,
-    memo
-);
-
-// Sign transaction
-let signed = tx.sign(&keypair)?;
-
-// Verify signature
-assert!(signed.verify_signature().is_ok());
-```
-
-### RPC Operations
+## RPC Operations
 
 ```rust
 use comx_api::rpc::{RpcClient, BatchRequest};
@@ -91,17 +62,17 @@ use serde_json::json;
 let client = RpcClient::new("http://your-node-url");
 
 // Single request
-let balance = client.request(
+let response = client.request(
     "query_balance",
     json!({
-        "address": "cmx1abc123..."
+        "address": "cmx1abc..."
     })
 ).await?;
 
 // Batch request
 let mut batch = BatchRequest::new();
-batch.add_request("query_balance", json!({"address": "cmx1abc123..."}));
-batch.add_request("query_balance", json!({"address": "cmx1def456..."}));
+batch.add_request("query_balance", json!({"address": "cmx1abc..."}));
+batch.add_request("query_balance", json!({"address": "cmx1def..."}));
 let responses = client.batch_request(batch).await?;
 ```
 
@@ -124,10 +95,15 @@ cargo build --release
 cargo test
 ```
 
-### Running Examples
+## Project Structure
 
-```bash
-cargo run --example basic_transfer
+```
+src/
+├── error/      # Error types and handling
+├── rpc/        # RPC client implementation
+├── query_map/  # Query Map implementation
+├── types/      # Core types (Address, Balance, etc.)
+└── lib.rs      # Library root
 ```
 
 ## Contributing

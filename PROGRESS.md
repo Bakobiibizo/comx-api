@@ -12,29 +12,26 @@
   - [x] Request/Response handling
   - [x] Error handling
   - [x] Batch request support
+- [x] Query Map Implementation
+  - [x] Define query map structure
+  - [x] Basic query methods (balance, stake relationships)
+  - [x] Batch query support
+  - [x] Error handling and validation
 
 ## Current Status
 
-Successfully implemented the core cryptographic functionality and RPC client with full test coverage. The RPC client supports both single and batch requests, with proper error handling and timeout configuration.
+Successfully implemented core cryptographic functionality, RPC client, and Query Map with full test coverage. The RPC client supports both single and batch requests, with proper error handling and timeout configuration. Query Map provides a high-level interface for common blockchain queries with proper validation and error handling.
 
 ## Next Steps
 
 ### High Priority
 
-~~1. Implement RPC client~~
-~~   - HTTP client setup~~
-~~   - Request/Response handling~~
-~~   - Error handling~~
-~~   - Batch request support~~
-
-1. Query Map Implementation
-   - Define query map structure
-   - Implement query methods from reference
+1. Query Map Enhancements
    - Add caching layer
    - Setup background refresh (every 5 minutes)
+   - Implement remaining query methods from reference
 
 2. Wallet Interactions
-   - Balance lookups
    - Transfer functionality
    - Transaction history
 
