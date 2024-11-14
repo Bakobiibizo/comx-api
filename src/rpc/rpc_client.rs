@@ -8,9 +8,9 @@ use futures::Future;
 
 #[derive(Debug, Clone)]
 pub struct RpcClient {
-    url: String,
-    client: reqwest::Client,
-    config: RpcClientConfig,
+    pub url: String,
+    pub client: reqwest::Client,
+    pub config: RpcClientConfig,
 }
 
 impl RpcClient {

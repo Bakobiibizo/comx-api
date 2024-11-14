@@ -88,3 +88,51 @@ pub struct RpcErrorDetail {
     pub request_id: Option<u32>,
 }
 
+impl RpcClient {
+    pub async fn request_with_path(&self, path: &str, params: serde_json::Value) -> Result<serde_json::Value, CommunexError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": path,
+            "params": params
+        });
+
+        let response = self.send_request(path, &request).await?;
+        
+        if let Some(error) = response.get("error") {
+            let code = error.get("code")
+                .and_then(|c| c.as_i64())
+                .unwrap_or(-32000);
+            let message = error.get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error")
+                .to_string();
+            
+            return Err(CommunexError::RpcError { code: code as i32, message });
+        }
+        
+        Ok(response.get("result").cloned().unwrap_or(json!({})))
+    }
+
+    async fn send_request(&self, path: &str, request: &serde_json::Value) -> Result<serde_json::Value, CommunexError> {
+        let url = if self.url.ends_with('/') {
+            format!("{}{}", self.url, path)
+        } else {
+            format!("{}/{}", self.url, path)
+        };
+
+        match self.client.post(&url)
+            .json(request)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await {
+                Ok(response) => {
+                    response.json().await.map_err(|e| {
+                        CommunexError::MalformedResponse(e.to_string())
+                    })
+                },
+                Err(e) => Err(CommunexError::ConnectionError(e.to_string()))
+            }
+    }
+}
+
