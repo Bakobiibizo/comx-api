@@ -1,5 +1,5 @@
 use comx_api::{
-    wallet::{WalletClient, TransferRequest},
+    wallet::{WalletClient, TransferRequest, TransactionStatus},
     error::CommunexError,
 };
 use wiremock::{
@@ -157,4 +157,75 @@ async fn test_get_all_balances() {
     assert_eq!(balances.reserved, 50000);
     assert_eq!(balances.misc_frozen, 10000);
     assert_eq!(balances.fee_frozen, 5000);
+}
+
+#[tokio::test]
+async fn test_get_transaction_history() {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/transaction/history"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "transaction/history",
+            "params": {
+                "address": "cmx1abcd123"
+            }
+        })))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "transactions": [
+                        {
+                            "hash": "0x123...",
+                            "block_num": 12345,
+                            "timestamp": 1704067200,
+                            "from": "cmx1sender",
+                            "to": "cmx1receiver",
+                            "amount": 1000,
+                            "denom": "COMAI",
+                            "status": "success"
+                        },
+                        {
+                            "hash": "0x456...",
+                            "block_num": 12346,
+                            "timestamp": 1704067260,
+                            "from": "cmx1sender",
+                            "to": "cmx1receiver",
+                            "amount": 2000,
+                            "denom": "COMAI",
+                            "status": "pending"
+                        }
+                    ]
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = WalletClient::new(&mock_server.uri());
+    let history = client.get_transaction_history("cmx1abcd123").await.unwrap();
+    
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].hash, "0x123...");
+    assert_eq!(history[0].amount, 1000);
+    assert!(matches!(history[0].status, TransactionStatus::Success));
+    assert_eq!(history[1].hash, "0x456...");
+    assert_eq!(history[1].amount, 2000);
+    assert!(matches!(history[1].status, TransactionStatus::Pending));
+}
+
+#[tokio::test]
+async fn test_get_transaction_history_invalid_address() {
+    let mock_server = MockServer::start().await;
+    let client = WalletClient::new(&mock_server.uri());
+    
+    let result = client.get_transaction_history("invalid_address").await;
+    assert!(matches!(
+        result,
+        Err(CommunexError::RpcError { code: -32001, .. })
+    ));
 } 

@@ -19,30 +19,39 @@
   - [x] Batch query support
   - [x] Error handling and validation
   - [x] Configuration validation
+- [x] Query Map Caching
+  - [x] Implement caching layer with configurable TTL
+  - [x] Setup background refresh worker (5-minute intervals)
+  - [x] Add cache invalidation strategy
+  - [x] Add metrics for cache hits/misses
 - [x] Comprehensive test coverage
   - [x] Types and crypto tests
   - [x] RPC client tests with mocked responses
   - [x] Query Map tests
   - [x] Error handling tests
+  - [x] Cache functionality tests
 
 ## Current Status
 
-Core functionality is implemented and thoroughly tested. The RPC client is robust with retry mechanisms and proper error handling. Query Map provides a high-level interface with proper validation. All tests are passing with good coverage of edge cases.
+Core functionality and caching are implemented and thoroughly tested. The RPC client is robust with retry mechanisms and proper error handling. Query Map provides a high-level interface with proper validation and caching. All tests are passing with good coverage of edge cases.
 
 ## Next Steps
 
 ### High Priority
 
-1. Query Map Caching
-   - [x] Implement caching layer with configurable TTL
-   - [x] Setup background refresh worker (5-minute intervals)
-   - [x] Add cache invalidation strategy
-   - [x] Add metrics for cache hits/misses
-
-2. Wallet Operations
-   - [ ] Implement transfer functionality
+1. Wallet Operations
+   - [x] Implement basic transfer functionality
+   - [x] Add balance query operations
    - [ ] Add transaction history queries
    - [ ] Add transaction status tracking
+   - [ ] Implement staking operations
+   - [ ] Add batch transfer support
+
+2. Module Operations
+   - [ ] Implement module client
+   - [ ] Add module server functionality
+   - [ ] Support endpoint definitions
+   - [ ] Add whitelist/blacklist functionality
 
 ### Medium Priority
 
@@ -84,6 +93,10 @@ Core functionality is implemented and thoroughly tested. The RPC client is robus
 3. Configuration Management
    - Define configuration file format
    - Determine if environment variables should be supported
+
+4. Module System Architecture
+   - Define exact module communication protocol
+   - Determine security requirements for module interactions
 
 ## Reference Documents
 

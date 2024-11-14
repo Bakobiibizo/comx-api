@@ -1,6 +1,7 @@
 use crate::{CommunexError, rpc::RpcClient};
 use serde::{Serialize, Deserialize};
 use serde_json::json;
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferRequest {
@@ -21,6 +22,27 @@ pub struct BalanceInfo {
     pub reserved: u64,
     pub misc_frozen: u64,
     pub fee_frozen: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionHistory {
+    pub hash: String,
+    pub block_num: u64,
+    #[serde(with = "chrono::serde::ts_seconds")]
+    pub timestamp: DateTime<Utc>,
+    pub from: String,
+    pub to: String,
+    pub amount: u64,
+    pub denom: String,
+    pub status: TransactionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransactionStatus {
+    Success,
+    Failed,
+    Pending,
 }
 
 pub struct WalletClient {
@@ -158,6 +180,68 @@ impl WalletClient {
             Err(e) => Err(e)
         }
     }
+
+    pub async fn get_transaction_history(&self, address: &str) -> Result<Vec<TransactionHistory>, CommunexError> {
+        if !address.starts_with("cmx1") {
+            return Err(CommunexError::RpcError {
+                code: -32001,
+                message: "Invalid address".into(),
+            });
+        }
+
+        let params = json!({
+            "address": address,
+        });
+
+        match self.rpc_client.request_with_path("transaction/history", params).await {
+            Ok(response) => {
+                let transactions = response.get("transactions")
+                    .and_then(|v| v.as_array())
+                    .ok_or(CommunexError::MalformedResponse("Missing transactions array".into()))?;
+
+                transactions.iter()
+                    .map(|tx| {
+                        Ok(TransactionHistory {
+                            hash: tx.get("hash")
+                                .and_then(|v| v.as_str())
+                                .ok_or(CommunexError::MalformedResponse("Missing hash".into()))?
+                                .to_string(),
+                            block_num: tx.get("block_num")
+                                .and_then(|v| v.as_u64())
+                                .ok_or(CommunexError::MalformedResponse("Missing block number".into()))?,
+                            timestamp: tx.get("timestamp")
+                                .and_then(|v| v.as_i64())
+                                .map(|ts| DateTime::<Utc>::from_timestamp(ts, 0))
+                                .flatten()
+                                .ok_or(CommunexError::MalformedResponse("Invalid timestamp".into()))?,
+                            from: tx.get("from")
+                                .and_then(|v| v.as_str())
+                                .ok_or(CommunexError::MalformedResponse("Missing from address".into()))?
+                                .to_string(),
+                            to: tx.get("to")
+                                .and_then(|v| v.as_str())
+                                .ok_or(CommunexError::MalformedResponse("Missing to address".into()))?
+                                .to_string(),
+                            amount: tx.get("amount")
+                                .and_then(|v| v.as_u64())
+                                .ok_or(CommunexError::MalformedResponse("Missing amount".into()))?,
+                            denom: tx.get("denom")
+                                .and_then(|v| v.as_str())
+                                .ok_or(CommunexError::MalformedResponse("Missing denomination".into()))?
+                                .to_string(),
+                            status: match tx.get("status").and_then(|v| v.as_str()) {
+                                Some("success") => TransactionStatus::Success,
+                                Some("failed") => TransactionStatus::Failed,
+                                Some("pending") => TransactionStatus::Pending,
+                                _ => TransactionStatus::Failed,
+                            },
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            },
+            Err(e) => Err(e)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -177,4 +261,4 @@ mod tests {
         assert_eq!(request.amount, 1000);
         assert_eq!(request.denom, "COMAI");
     }
-} 
+}
