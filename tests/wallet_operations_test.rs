@@ -1,5 +1,5 @@
 use comx_api::{
-    wallet::{WalletClient, TransferRequest, TransactionStatus},
+    wallet::{WalletClient, TransferRequest, Txstate, TransactionStatus, staking::StakeRequest},
     error::CommunexError,
 };
 use wiremock::{
@@ -212,10 +212,10 @@ async fn test_get_transaction_history() {
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].hash, "0x123...");
     assert_eq!(history[0].amount, 1000);
-    assert!(matches!(history[0].status, TransactionStatus::Success));
+    assert!(matches!(history[0].state, TransactionStatus::Success));
     assert_eq!(history[1].hash, "0x456...");
     assert_eq!(history[1].amount, 2000);
-    assert!(matches!(history[1].status, TransactionStatus::Pending));
+    assert!(matches!(history[1].state, TransactionStatus::Pending));
 }
 
 #[tokio::test]
@@ -228,4 +228,132 @@ async fn test_get_transaction_history_invalid_address() {
         result,
         Err(CommunexError::RpcError { code: -32001, .. })
     ));
+}
+
+#[tokio::test]
+async fn test_stake_tokens() {
+    let mock_server = MockServer::start().await;
+    
+    // Mock stake request
+    Mock::given(method("POST"))
+        .and(path("/staking/stake"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "staking/stake",
+            "params": {
+                "from": "cmx1abcd123",
+                "amount": 1000,
+                "denom": "COMAI"
+            }
+        })))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "hash": "0x123..."
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    // Mock status check
+    Mock::given(method("POST"))
+        .and(path("/transaction/status"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "block_num": 12345,
+                    "confirmations": 1,
+                    "status": "success",
+                    "timestamp": 1704067200
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = WalletClient::new(&mock_server.uri());
+    
+    let request = StakeRequest {
+        from: "cmx1abcd123".into(),
+        amount: 1000,
+        denom: "COMAI".into(),
+    };
+    
+    let result = client.stake(request).await.unwrap();
+    assert!(matches!(result.state, Txstate::Success));
+}
+
+#[tokio::test]
+async fn test_get_staking_info() {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/staking/info"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "total_staked": 5000,
+                    "rewards_available": 100,
+                    "last_claim_time": 1704067200,
+                    "denom": "COMAI"
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = WalletClient::new(&mock_server.uri());
+    let info = client.get_staking_info("cmx1abcd123").await.unwrap();
+    
+    assert_eq!(info.total_staked, 5000);
+    assert_eq!(info.rewards_available, 100);
+    assert_eq!(info.denom, "COMAI");
+}
+
+#[tokio::test]
+async fn test_get_transaction_status() {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/transaction/status"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "transaction/status",
+            "params": {
+                "hash": "0x123..."
+            }
+        })))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "block_num": 12345,
+                    "confirmations": 5,
+                    "status": "success",
+                    "timestamp": 1704067200,
+                    "error": null
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = WalletClient::new(&mock_server.uri());
+    let status = client.get_transaction_state("0x123...").await.unwrap();
+    
+    assert_eq!(status.hash, "0x123...");
+    assert_eq!(status.block_num, Some(12345));
+    assert_eq!(status.confirmations, 5);
+    assert!(matches!(status.state, Txstate::Success));
+    assert!(status.error.is_none());
 } 

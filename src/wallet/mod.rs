@@ -2,6 +2,9 @@ use crate::{CommunexError, rpc::RpcClient};
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use chrono::{DateTime, Utc};
+use std::time::{Duration, Instant};
+pub mod staking;
+use staking::StakeRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferRequest {
@@ -13,7 +16,7 @@ pub struct TransferRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferResponse {
-    pub status: String,
+    pub state: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +37,7 @@ pub struct TransactionHistory {
     pub to: String,
     pub amount: u64,
     pub denom: String,
-    pub status: TransactionStatus,
+    pub state: TransactionStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +46,26 @@ pub enum TransactionStatus {
     Success,
     Failed,
     Pending,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionState {
+    pub hash: String,
+    pub block_num: Option<u64>,
+    pub confirmations: u64,
+    pub state: Txstate,
+    #[serde(with = "chrono::serde::ts_seconds")]
+    pub timestamp: DateTime<Utc>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Txstate {
+    Pending,
+    Success,
+    Failed,
+    NotFound,
 }
 
 pub struct WalletClient {
@@ -91,7 +114,7 @@ impl WalletClient {
         match self.rpc_client.request_with_path("transfer", params).await {
             Ok(response) => {
                 Ok(TransferResponse {
-                    status: response.get("status")
+                    state: response.get("state")
                         .and_then(|s| s.as_str())
                         .unwrap_or("success")
                         .to_string(),
@@ -229,7 +252,7 @@ impl WalletClient {
                                 .and_then(|v| v.as_str())
                                 .ok_or(CommunexError::MalformedResponse("Missing denomination".into()))?
                                 .to_string(),
-                            status: match tx.get("status").and_then(|v| v.as_str()) {
+                            state: match tx.get("state").and_then(|v| v.as_str()) {
                                 Some("success") => TransactionStatus::Success,
                                 Some("failed") => TransactionStatus::Failed,
                                 Some("pending") => TransactionStatus::Pending,
@@ -241,6 +264,58 @@ impl WalletClient {
             },
             Err(e) => Err(e)
         }
+    }
+
+    pub async fn get_transaction_state(&self, tx_hash: &str) -> Result<TransactionState, CommunexError> {
+        let params = json!({
+            "hash": tx_hash,
+        });
+
+        match self.rpc_client.request_with_path("transaction/state", params).await {
+            Ok(response) => {
+                Ok(TransactionState {
+                    hash: tx_hash.to_string(),
+                    block_num: response.get("block_num")
+                        .and_then(|v| v.as_u64()),
+                    confirmations: response.get("confirmations")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                    state: match response.get("state").and_then(|v| v.as_str()) {
+                        Some("success") => Txstate::Success,
+                        Some("failed") => Txstate::Failed,
+                        Some("pending") => Txstate::Pending,
+                        _ => Txstate::NotFound,
+                    },
+                    timestamp: response.get("timestamp")
+                        .and_then(|v| v.as_i64())
+                        .map(|ts| DateTime::<Utc>::from_timestamp(ts, 0))
+                        .flatten()
+                        .unwrap_or_else(|| Utc::now()),
+                    error: response.get("error")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                })
+            },
+            Err(e) => Err(e)
+        }
+    }
+
+    pub async fn wait_for_transaction(&self, tx_hash: &str, timeout: Duration) -> Result<TransactionState, CommunexError> {
+        let start_time = Instant::now();
+        
+        while start_time.elapsed() < timeout {
+            let state = self.get_transaction_state(tx_hash).await?;
+            
+            match state.state {
+                Txstate::Success | Txstate::Failed => return Ok(state),
+                _ => {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+            }
+        }
+        
+        Err(CommunexError::RequestTimeout("Transaction wait timeout".into()))
     }
 }
 

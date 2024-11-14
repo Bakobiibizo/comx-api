@@ -56,6 +56,8 @@ pub enum CommunexError {
     #[error("Validation error: {0}")]
     ValidationError(String),
 
+    #[error("Request timeout: {0}")]
+    RequestTimeout(String),
     
 }
 
@@ -80,6 +82,7 @@ impl CommunexError {
             Self::InvalidBalance(msg) => write!(f, "Invalid balance: {}", msg),
             Self::InvalidAmount(msg) => write!(f, "Invalid amount: {}", msg),
             Self::InvalidDenom(msg) => write!(f, "Invalid denomination: {}", msg),
+            Self::RequestTimeout(msg) => write!(f, "Request timeout: {}", msg),
         }
     }
 }
