@@ -15,6 +15,14 @@ pub struct TransferResponse {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BalanceInfo {
+    pub free: u64,
+    pub reserved: u64,
+    pub misc_frozen: u64,
+    pub fee_frozen: u64,
+}
+
 pub struct WalletClient {
     pub rpc_client: RpcClient,
 }
@@ -79,6 +87,75 @@ impl WalletClient {
             Err(_) => {
                 Err(CommunexError::ConnectionError("Failed to connect to server".into()))
             }
+        }
+    }
+
+    pub async fn get_free_balance(&self, address: &str) -> Result<u64, CommunexError> {
+        if !address.starts_with("cmx1") {
+            return Err(CommunexError::RpcError {
+                code: -32001,
+                message: "Invalid address".into(),
+            });
+        }
+
+        let params = json!({
+            "address": address,
+        });
+
+        match self.rpc_client.request_with_path("balance/free", params).await {
+            Ok(response) => {
+                Ok(response.get("free")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0))
+            },
+            Err(e) => Err(e)
+        }
+    }
+
+    pub async fn get_all_balances(&self, address: &str) -> Result<BalanceInfo, CommunexError> {
+        if !address.starts_with("cmx1") {
+            return Err(CommunexError::RpcError {
+                code: -32001,
+                message: "Invalid address".into(),
+            });
+        }
+
+        let params = json!({
+            "address": address,
+        });
+
+        match self.rpc_client.request_with_path("balance/all", params).await {
+            Ok(response) => {
+                Ok(BalanceInfo {
+                    free: response.get("free").and_then(|v| v.as_u64()).unwrap_or(0),
+                    reserved: response.get("reserved").and_then(|v| v.as_u64()).unwrap_or(0),
+                    misc_frozen: response.get("miscFrozen").and_then(|v| v.as_u64()).unwrap_or(0),
+                    fee_frozen: response.get("feeFrozen").and_then(|v| v.as_u64()).unwrap_or(0),
+                })
+            },
+            Err(e) => Err(e)
+        }
+    }
+
+    pub async fn get_staked_balance(&self, address: &str) -> Result<u64, CommunexError> {
+        if !address.starts_with("cmx1") {
+            return Err(CommunexError::RpcError {
+                code: -32001,
+                message: "Invalid address".into(),
+            });
+        }
+
+        let params = json!({
+            "address": address,
+        });
+
+        match self.rpc_client.request_with_path("balance/staked", params).await {
+            Ok(response) => {
+                Ok(response.get("staked")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0))
+            },
+            Err(e) => Err(e)
         }
     }
 }

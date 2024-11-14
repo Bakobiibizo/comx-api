@@ -96,4 +96,65 @@ async fn test_transfer_insufficient_funds() {
         result,
         Err(CommunexError::RpcError { code: -32000, .. })
     ));
+}
+
+#[tokio::test]
+async fn test_get_free_balance() {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/balance/free"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "balance/free",
+            "params": {
+                "address": "cmx1abcd123"
+            }
+        })))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "free": 1000000
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = WalletClient::new(&mock_server.uri());
+    let balance = client.get_free_balance("cmx1abcd123").await.unwrap();
+    assert_eq!(balance, 1000000);
+}
+
+#[tokio::test]
+async fn test_get_all_balances() {
+    let mock_server = MockServer::start().await;
+    
+    Mock::given(method("POST"))
+        .and(path("/balance/all"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_body_json(json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "free": 1000000,
+                    "reserved": 50000,
+                    "miscFrozen": 10000,
+                    "feeFrozen": 5000
+                }
+            })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = WalletClient::new(&mock_server.uri());
+    let balances = client.get_all_balances("cmx1abcd123").await.unwrap();
+    
+    assert_eq!(balances.free, 1000000);
+    assert_eq!(balances.reserved, 50000);
+    assert_eq!(balances.misc_frozen, 10000);
+    assert_eq!(balances.fee_frozen, 5000);
 } 
