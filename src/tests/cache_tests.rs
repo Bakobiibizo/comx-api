@@ -1,7 +1,7 @@
-use tokio::time::{sleep, Duration};
+use tokio::time::sleep;
+use std::time::Duration;
 use std::sync::Arc;
 use crate::cache::{QueryMapCache, CacheConfig, QueryResult};
-use crate::error::CommunexError;
 
 #[tokio::test]
 async fn test_cache_basic_operations() {
@@ -96,16 +96,16 @@ async fn test_cache_metrics() {
 #[tokio::test]
 async fn test_background_refresh() {
     let config = CacheConfig {
-        ttl: Duration::from_secs(60),
-        refresh_interval: Duration::from_secs(1),
+        ttl: Duration::from_secs(1),
+        refresh_interval: Duration::from_millis(100),
         max_entries: 1000,
     };
     
     let cache = Arc::new(QueryMapCache::new(config));
     
-    // Setup refresh handler - now we clone the key to avoid lifetime issues
+    // Setup refresh handler
     cache.set_refresh_handler(Box::new(|key: &str| {
-        let key = key.to_string(); // Clone the key
+        let key = key.to_string();
         Box::pin(async move {
             Ok(QueryResult::new(&format!("refreshed_{}", key)))
         })
@@ -116,13 +116,32 @@ async fn test_background_refresh() {
     let initial_data = QueryResult::new("initial_value");
     cache.set(query_key, initial_data).await;
     
+    // Force expire the entry
+    cache.force_expire(query_key).await;
+    
     // Start background refresh
     cache.start_background_refresh().await;
     
-    // Wait for refresh cycle
-    sleep(Duration::from_secs(2)).await;
+    // Wait for refresh cycle plus a small buffer
+    sleep(Duration::from_millis(200)).await;
     
-    let refreshed_data = cache.get(query_key).await;
-    assert!(refreshed_data.is_some());
-    assert_eq!(refreshed_data.unwrap().data, "refreshed_refresh_test");
+    // Try multiple times to get the refreshed data
+    let mut attempts = 0;
+    let max_attempts = 5;
+    let mut refreshed_data = None;
+    
+    while attempts < max_attempts {
+        if let Some(data) = cache.get(query_key).await {
+            if data.data == format!("refreshed_{}", query_key) {
+                refreshed_data = Some(data);
+                break;
+            }
+        }
+        sleep(Duration::from_millis(100)).await;
+        attempts += 1;
+    }
+    
+    let refreshed_data = refreshed_data.expect("Should have refreshed data");
+    assert_eq!(refreshed_data.data, format!("refreshed_{}", query_key), 
+        "Data should have been refreshed with new value");
 } 
