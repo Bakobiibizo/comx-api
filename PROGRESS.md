@@ -34,10 +34,10 @@ Core functionality is implemented and thoroughly tested. The RPC client is robus
 ### High Priority
 
 1. Query Map Caching
-   - [ ] Implement caching layer with configurable TTL
-   - [ ] Setup background refresh worker (5-minute intervals)
-   - [ ] Add cache invalidation strategy
-   - [ ] Add metrics for cache hits/misses
+   - [x] Implement caching layer with configurable TTL
+   - [x] Setup background refresh worker (5-minute intervals)
+   - [x] Add cache invalidation strategy
+   - [x] Add metrics for cache hits/misses
 
 2. Wallet Operations
    - [ ] Implement transfer functionality

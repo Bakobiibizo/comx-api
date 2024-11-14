@@ -1,161 +1,80 @@
-# Communex Rust API Client
+# Communex API Client
 
-A Rust implementation of the Communex blockchain client API, optimized for high performance and async operations.
+This is a Rust implementation of the Communex API client, optimized for performance and designed to work asynchronously. The library provides methods for interacting with the blockchain via RPC commands through a FastAPI interface.
 
 ## Features
 
-- Async RPC client with configurable retry mechanism
-- Batch request support for efficient operations
-- Query Map for blockchain state queries with validation
-- SR25519 cryptographic operations using Substrate primitives
-- Comprehensive error handling and response validation
-- Full test coverage with mocked responses
-- Type-safe balance and address handling
+- **Query Map Caching**: Efficient caching layer with configurable TTL and background refresh worker.
+- **Metrics**: Track cache hits, misses, and refresh failures.
+- **Asynchronous Operations**: Designed to handle batch requests efficiently.
+- **Comprehensive Test Coverage**: Includes tests for types, RPC client, query map, and error handling.
 
 ## Installation
 
-Add to your Cargo.toml:
+To use this library, add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-comx-api = "0.1.0"
-tokio = { version = "1.0", features = ["full"] }
+comx-api = { git = "https://github.com/your-repo/comx-api.git" }
 ```
 
-## Quick Start
+## Usage
+
+### Query Map Cache
+
+The `QueryMapCache` provides a caching layer for query results with a configurable time-to-live (TTL) and background refresh capabilities.
 
 ```rust
-use comx_api::{
-    QueryMap, 
-    QueryMapConfig,
-    rpc::{RpcClient, RpcClientConfig},
-    types::{Address, Balance}
-};
+use comx_api::cache::{QueryMapCache, CacheConfig, QueryResult};
 use std::time::Duration;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Configure RPC client
-    let rpc_config = RpcClientConfig {
-        timeout: Duration::from_secs(30),
-        max_retries: 3,
+async fn main() {
+    let config = CacheConfig {
+        ttl: Duration::from_secs(60),
+        refresh_interval: Duration::from_secs(300),
+        max_entries: 1000,
     };
-    let client = RpcClient::new_with_config("http://your-node-url", rpc_config);
     
-    // Configure and create QueryMap
-    let query_config = QueryMapConfig {
-        refresh_interval: Duration::from_secs(300), // 5 minutes
-        cache_duration: Duration::from_secs(600),   // 10 minutes
-    };
-    let query_map = QueryMap::new(client, query_config)?;
+    let cache = QueryMapCache::new(config);
+    let query_key = "example_query";
+    let result = QueryResult::new("example_data");
     
-    // Query single balance
-    let address = Address::from_str("cmx1abc...")?;
-    let balance = query_map.get_balance(&address).await?;
-    println!("Balance: {} {}", balance.amount()?, balance.denom());
-    
-    // Batch balance query
-    let addresses = vec![
-        Address::from_str("cmx1abc...")?,
-        Address::from_str("cmx1def...")?
-    ];
-    let balances = query_map.get_balances(&addresses).await?;
-    
-    // Query stake relationships
-    let stake_from = query_map.get_stake_from(&address).await?;
-    let stake_to = query_map.get_stake_to(&address).await?;
-    
-    Ok(())
+    cache.set(query_key, result).await;
+    if let Some(cached_result) = cache.get(query_key).await {
+        println!("Cached data: {}", cached_result.data);
+    }
 }
 ```
 
-## RPC Operations
+### Query Map
+
+The `QueryMap` provides high-level access to blockchain state queries with caching support. It automatically handles RPC communication and response parsing.
 
 ```rust
-use comx_api::rpc::{RpcClient, BatchRequest};
-use serde_json::json;
+use comx_api::rpc::RpcClient;
+use comx_api::query_map::{QueryMap, QueryMapConfig};
+use std::time::Duration;
 
-// Create RPC client with default config
-let client = RpcClient::new("http://your-node-url");
-
-// Single request with retry handling
-let response = client.request(
-    "query_balance",
-    json!({
-        "address": "cmx1abc..."
-    })
-).await?;
-
-// Batch request
-let mut batch = BatchRequest::new();
-batch.add_request("query_balance", json!({"address": "cmx1abc..."}));
-batch.add_request("query_balance", json!({"address": "cmx1def..."}));
-let responses = client.batch_request(batch).await?;
-```
-
-## Error Handling
-
-```rust
-use comx_api::error::CommunexError;
-
-match query_map.get_balance(&address).await {
-    Ok(balance) => println!("Balance: {}", balance),
-    Err(CommunexError::ConnectionError(msg)) => eprintln!("Connection failed: {}", msg),
-    Err(CommunexError::RpcError { code, message }) => eprintln!("RPC error {}: {}", code, message),
-    Err(e) => eprintln!("Other error: {}", e),
+#[tokio::main]
+async fn main() {
+    let client = RpcClient::new("http://your-node-url");
+    let config = QueryMapConfig {
+        refresh_interval: Duration::from_secs(300),
+        cache_duration: Duration::from_secs(600),
+    };
+    
+    let query_map = QueryMap::new(client, config).unwrap();
+    // Use the query map...
 }
-```
-
-## Development
-
-### Prerequisites
-
-- Rust 1.70 or higher
-- Cargo
-
-### Building
-
-```bash
-cargo build --release
-```
-
-### Testing
-
-```bash
-cargo test
-```
-
-## Project Structure
-
-```
-src/
-├── error/      # Error types and handling
-├── rpc/        # RPC client implementation
-│   ├── client.rs
-│   └── batch.rs
-├── query_map/  # Query Map implementation
-│   ├── config.rs
-│   └── query_map.rs
-├── types/      # Core types
-│   ├── address.rs
-│   ├── balance.rs
-│   └── transaction.rs
-└── lib.rs      # Library root
 ```
 
 ## Contributing
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
-
-Please make sure to update tests as appropriate.
+Contributions are welcome! Please open an issue or submit a pull request.
 
 ## License
 
-[MIT](LICENSE)
-
-## Acknowledgments
-
-- Built using Substrate primitives for cryptographic operations
-- Compatible with Communex blockchain ecosystem
+This project is licensed under the MIT License.
 
 
