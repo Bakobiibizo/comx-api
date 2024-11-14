@@ -7,6 +7,7 @@ pub mod crypto;
 pub mod rpc;
 pub mod query_map;
 pub mod cache;
+pub mod wallet;
 
 pub use error::CommunexError;
 pub use types::{Address, Balance, Transaction, SignedTransaction};

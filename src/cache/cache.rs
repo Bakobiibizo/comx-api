@@ -7,7 +7,7 @@ use super::CacheConfig;
 use std::pin::Pin;
 use std::future::Future;
 use std::fmt;
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
 
 type RefreshHandler = Box<dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<QueryResult, CommunexError>> + Send>> + Send + Sync>;
 

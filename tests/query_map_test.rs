@@ -10,7 +10,6 @@ use mockito::{Server, ServerOpts};
 use serial_test::serial;
 
 const TEST_ADDRESS: &str = "cmx1abc123def456";
-const TEST_STAKE_ADDRESS: &str = "cmx1def456abc789";
 
 async fn setup_test_server(response: serde_json::Value) -> (Server, RpcClient) {
     let opts = ServerOpts::default();

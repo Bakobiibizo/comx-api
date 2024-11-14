@@ -1,7 +1,6 @@
 use thiserror::Error;
 use std::cmp::PartialEq; 
 use std::fmt;
-
 #[derive(Debug, Error, PartialEq)]
 pub enum CommunexError {
     #[error("Invalid address format: {0}")]
