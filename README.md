@@ -43,9 +43,13 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let client = WalletClient::new("http://your-node-url");
+    // Create client with custom timeout
+    let client = WalletClient::with_timeout(
+        "http://your-node-url",
+        Duration::from_secs(30)
+    );
     
-    // Transfer tokens
+    // Single transfer
     let transfer = TransferRequest {
         from: "cmx1sender...".into(),
         to: "cmx1receiver...".into(),
@@ -54,6 +58,24 @@ async fn main() {
     };
     
     let result = client.transfer(transfer).await?;
+
+    // Batch transfer
+    let transfers = vec![
+        TransferRequest {
+            from: "cmx1sender...".into(),
+            to: "cmx1receiver1...".into(),
+            amount: 1000,
+            denom: "COMAI".into(),
+        },
+        TransferRequest {
+            from: "cmx1sender...".into(),
+            to: "cmx1receiver2...".into(),
+            amount: 2000,
+            denom: "COMAI".into(),
+        },
+    ];
+    
+    let batch_result = client.batch_transfer(transfers).await?;
 }
 ```
 

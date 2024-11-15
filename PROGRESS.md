@@ -13,6 +13,7 @@
   - [x] Error handling
   - [x] Batch request support
   - [x] Retry mechanism with configurable attempts
+  - [x] Timeout handling and configuration
 - [x] Query Map Implementation
   - [x] Define query map structure
   - [x] Basic query methods (balance, stake relationships)
@@ -24,30 +25,23 @@
   - [x] Setup background refresh worker (5-minute intervals)
   - [x] Add cache invalidation strategy
   - [x] Add metrics for cache hits/misses
-- [x] Comprehensive test coverage
-  - [x] Types and crypto tests
-  - [x] RPC client tests with mocked responses
-  - [x] Query Map tests
-  - [x] Error handling tests
-  - [x] Cache functionality tests
+- [x] Wallet Operations
+  - [x] Implement basic transfer functionality
+  - [x] Add balance query operations
+  - [x] Add transaction history queries
+  - [x] Add transaction status tracking
+  - [x] Implement staking operations
+  - [x] Add batch transfer support with timeout handling
 
 ## Current Status
 
-Core functionality, wallet operations, and caching are implemented and thoroughly tested. The RPC client is robust with retry mechanisms and proper error handling. Query Map provides a high-level interface with proper validation and caching. All tests are passing with good coverage of edge cases.
+Core functionality, wallet operations, and caching are fully implemented and thoroughly tested. The RPC client is robust with retry mechanisms, timeout handling, and proper error handling. Query Map provides a high-level interface with proper validation and caching. All tests are passing with good coverage of edge cases.
 
 ## Next Steps
 
 ### High Priority
 
-1. Wallet Operations
-   - [x] Implement basic transfer functionality
-   - [x] Add balance query operations
-   - [x] Add transaction history queries
-   - [x] Add transaction status tracking
-   - [x] Implement staking operations
-   - [ ] Add batch transfer support
-
-2. Module Operations
+1. Module Operations
    - [ ] Implement module client
    - [ ] Add module server functionality
    - [ ] Support endpoint definitions
