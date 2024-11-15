@@ -33,7 +33,7 @@
 
 ## Current Status
 
-Core functionality and caching are implemented and thoroughly tested. The RPC client is robust with retry mechanisms and proper error handling. Query Map provides a high-level interface with proper validation and caching. All tests are passing with good coverage of edge cases.
+Core functionality, wallet operations, and caching are implemented and thoroughly tested. The RPC client is robust with retry mechanisms and proper error handling. Query Map provides a high-level interface with proper validation and caching. All tests are passing with good coverage of edge cases.
 
 ## Next Steps
 
@@ -42,9 +42,9 @@ Core functionality and caching are implemented and thoroughly tested. The RPC cl
 1. Wallet Operations
    - [x] Implement basic transfer functionality
    - [x] Add balance query operations
-   - [ ] Add transaction history queries
-   - [ ] Add transaction status tracking
-   - [ ] Implement staking operations
+   - [x] Add transaction history queries
+   - [x] Add transaction status tracking
+   - [x] Implement staking operations
    - [ ] Add batch transfer support
 
 2. Module Operations

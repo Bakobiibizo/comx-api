@@ -69,6 +69,21 @@ async fn main() {
 }
 ```
 
+### Wallet Operations
+
+The `WalletClient` provides methods for managing transfers, staking, and transaction tracking:
+
+```rust
+use comx_api::wallet::{WalletClient, TransferRequest, StakeRequest, TransactionStatus};
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() {
+    let client = WalletClient::new("http://your-node-url");
+    // Use the wallet client...
+}
+```
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
