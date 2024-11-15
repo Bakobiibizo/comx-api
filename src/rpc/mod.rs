@@ -4,6 +4,8 @@ pub use rpc_client::RpcClient;
 use serde_json::{Value, json};
 use std::time::Duration;
 use crate::error::CommunexError;
+use reqwest::Client;
+use tokio::time::timeout as tokio_timeout;
 
 #[derive(Debug, Clone)]
 pub struct RpcClientConfig {
@@ -114,7 +116,7 @@ impl RpcClient {
         Ok(response.get("result").cloned().unwrap_or(json!({})))
     }
 
-    async fn send_request(&self, path: &str, request: &serde_json::Value) -> Result<serde_json::Value, CommunexError> {
+    pub async fn send_request(&self, path: &str, request: &serde_json::Value) -> Result<serde_json::Value, CommunexError> {
         let url = if self.url.ends_with('/') {
             format!("{}{}", self.url, path)
         } else {
@@ -133,6 +135,76 @@ impl RpcClient {
                 },
                 Err(e) => Err(CommunexError::ConnectionError(e.to_string()))
             }
+    }
+
+    pub async fn request_with_timeout(
+        &self, 
+        method: &str, 
+        params: Value, 
+        timeout: Duration
+    ) -> Result<Value, CommunexError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        });
+
+        let client = Client::builder()
+            .timeout(timeout)
+            .build()?;
+
+        let response = client
+            .post(&self.url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    CommunexError::RequestTimeout(format!(
+                        "Request timed out after {} seconds", 
+                        timeout.as_secs()
+                    ))
+                } else {
+                    e.into()
+                }
+            })?;
+
+        let value = response.json::<Value>().await?;
+        self.handle_rpc_response(value).await
+    }
+
+    pub async fn request(&self, method: &str, params: Value) -> Result<Value, CommunexError> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        });
+
+        let client = Client::new();
+        
+        // Use tokio's timeout
+        let response = tokio_timeout(
+            self.config.timeout,
+            client
+                .post(&self.url)
+                .json(&request)
+                .send()
+        ).await
+        .map_err(|_| CommunexError::RequestTimeout(
+            format!("Request timed out after {} seconds", self.config.timeout.as_secs())
+        ))??;
+
+        if !response.status().is_success() {
+            return Err(CommunexError::RpcError {
+                code: response.status().as_u16() as i32,
+                message: format!("HTTP error: {}", response.status()),
+            });
+        }
+
+        let value = response.json::<Value>().await?;
+        self.handle_rpc_response(value).await
     }
 }
 

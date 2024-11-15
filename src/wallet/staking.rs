@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use crate::error::CommunexError;
-use crate::wallet::{WalletClient, TransactionState, TransactionStatus};
+use crate::wallet::{WalletClient, TransactionState};
 use serde_json::json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

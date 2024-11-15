@@ -1,6 +1,8 @@
 use thiserror::Error;
 use std::cmp::PartialEq; 
 use std::fmt;
+use reqwest;
+
 #[derive(Debug, Error, PartialEq)]
 pub enum CommunexError {
     #[error("Invalid address format: {0}")]
@@ -109,4 +111,10 @@ fn format_errors(errors: &Vec<RpcErrorDetail>) -> String {
         .map(|e| e.to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+impl From<reqwest::Error> for CommunexError {
+    fn from(error: reqwest::Error) -> Self {
+        CommunexError::ConnectionError(error.to_string())
+    }
 } 

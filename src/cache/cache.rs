@@ -6,8 +6,8 @@ use crate::error::CommunexError;
 use super::CacheConfig;
 use std::pin::Pin;
 use std::future::Future;
+use std::time::Duration;
 use std::fmt;
-use tokio::time::Duration;
 
 type RefreshHandler = Box<dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<QueryResult, CommunexError>> + Send>> + Send + Sync>;
 

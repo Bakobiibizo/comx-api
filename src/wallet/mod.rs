@@ -4,7 +4,6 @@ use serde_json::json;
 use chrono::{DateTime, Utc};
 use std::time::{Duration, Instant};
 pub mod staking;
-use staking::StakeRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferRequest {
@@ -86,10 +85,21 @@ pub struct WalletClient {
     pub rpc_client: RpcClient,
 }
 
+// Constants for validation
+const MAX_BATCH_SIZE: usize = 100;
+const VALID_DENOMS: [&str; 1] = ["COMAI"];
+const MIN_AMOUNT: u64 = 1;
+
 impl WalletClient {
-    pub fn new(uri: &str) -> Self {
-        WalletClient {
-            rpc_client: RpcClient::new(uri),
+    pub fn new(url: &str) -> Self {
+        Self {
+            rpc_client: RpcClient::new(url),
+        }
+    }
+
+    pub fn with_timeout(url: &str, timeout: Duration) -> Self {
+        Self {
+            rpc_client: RpcClient::with_timeout(url, timeout),
         }
     }
 
@@ -333,14 +343,69 @@ impl WalletClient {
     }
 
     pub async fn batch_transfer(&self, transfers: Vec<TransferRequest>) -> Result<BatchTransferResult, CommunexError> {
+        // Validate batch size
+        if transfers.is_empty() {
+            return Err(CommunexError::ValidationError("Transfer list cannot be empty".into()));
+        }
+        if transfers.len() > MAX_BATCH_SIZE {
+            return Err(CommunexError::ValidationError(
+                format!("Batch size exceeds maximum limit of {}", MAX_BATCH_SIZE)
+            ));
+        }
+
+        // Validate each transfer
+        for transfer in transfers.iter() {
+            self.validate_transfer(transfer)?;
+        }
+
         let params = json!({
             "transfers": transfers
         });
 
-        let response = self.rpc_client.request("batch_transfer", params).await?;
-        
+        let response = self.rpc_client
+            .request("batch_transfer", params)
+            .await
+            .map_err(|e| match e {
+                CommunexError::RequestTimeout(_) => 
+                    CommunexError::RequestTimeout("Batch transfer request timed out".into()),
+                _ => e
+            })?;
+
         serde_json::from_value(response)
-            .map_err(|e| CommunexError::ParseError(format!("Failed to parse batch transfer response: {}", e)))
+            .map_err(|e| CommunexError::ParseError(
+                format!("Failed to parse batch transfer response: {}", e)
+            ))
+    }
+
+    fn validate_transfer(&self, transfer: &TransferRequest) -> Result<(), CommunexError> {
+        // Validate addresses
+        if !transfer.from.starts_with("cmx1") {
+            return Err(CommunexError::ValidationError(
+                format!("Invalid sender address format: {}", transfer.from)
+            ));
+        }
+        if !transfer.to.starts_with("cmx1") {
+            return Err(CommunexError::ValidationError(
+                format!("Invalid receiver address format: {}", transfer.to)
+            ));
+        }
+
+        // Validate amount
+        if transfer.amount < MIN_AMOUNT {
+            return Err(CommunexError::ValidationError(
+                format!("Amount must be greater than {}", MIN_AMOUNT - 1)
+            ));
+        }
+
+        // Validate denomination
+        if !VALID_DENOMS.contains(&transfer.denom.as_str()) {
+            return Err(CommunexError::ValidationError(
+                format!("Invalid denomination: {}. Valid options are: {:?}", 
+                    transfer.denom, VALID_DENOMS)
+            ));
+        }
+
+        Ok(())
     }
 }
 
