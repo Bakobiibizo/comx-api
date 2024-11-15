@@ -40,7 +40,7 @@ pub struct TransactionHistory {
     pub state: TransactionStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionStatus {
     Success,
@@ -66,6 +66,20 @@ pub enum Txstate {
     Success,
     Failed,
     NotFound,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchTransferResult {
+    pub batch_id: String,
+    pub transactions: Vec<BatchTransactionStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchTransactionStatus {
+    pub hash: String,
+    pub status: TransactionStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 pub struct WalletClient {
@@ -316,6 +330,17 @@ impl WalletClient {
         }
         
         Err(CommunexError::RequestTimeout("Transaction wait timeout".into()))
+    }
+
+    pub async fn batch_transfer(&self, transfers: Vec<TransferRequest>) -> Result<BatchTransferResult, CommunexError> {
+        let params = json!({
+            "transfers": transfers
+        });
+
+        let response = self.rpc_client.request("batch_transfer", params).await?;
+        
+        serde_json::from_value(response)
+            .map_err(|e| CommunexError::ParseError(format!("Failed to parse batch transfer response: {}", e)))
     }
 }
 
