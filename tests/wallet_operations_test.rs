@@ -187,7 +187,7 @@ async fn test_get_transaction_history() {
                             "to": "cmx1receiver",
                             "amount": 1000,
                             "denom": "COMAI",
-                            "status": "success"
+                            "state": "success"
                         },
                         {
                             "hash": "0x456...",
@@ -197,7 +197,7 @@ async fn test_get_transaction_history() {
                             "to": "cmx1receiver",
                             "amount": 2000,
                             "denom": "COMAI",
-                            "status": "pending"
+                            "state": "pending"
                         }
                     ]
                 }
@@ -231,10 +231,10 @@ async fn test_get_transaction_history_invalid_address() {
 }
 
 #[tokio::test]
-async fn test_stake_tokens() {
+async fn test_stake_tokens() -> Result<(), CommunexError> {
     let mock_server = MockServer::start().await;
     
-    // Mock stake request
+    // Mock the stake request with the correct path and body matcher
     Mock::given(method("POST"))
         .and(path("/staking/stake"))
         .and(body_json(json!({
@@ -242,51 +242,61 @@ async fn test_stake_tokens() {
             "id": 1,
             "method": "staking/stake",
             "params": {
-                "from": "cmx1abcd123",
+                "from": "cmx1sender...",
                 "amount": 1000,
                 "denom": "COMAI"
             }
         })))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_json(json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {
-                    "hash": "0x123..."
-                }
-            })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "hash": "0xabcd1234",
+                "state": "success"
+            }
+        })))
         .expect(1)
         .mount(&mock_server)
         .await;
 
-    // Mock status check
+    // Mock the transaction status check
     Mock::given(method("POST"))
-        .and(path("/transaction/status"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_json(json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "result": {
-                    "block_num": 12345,
-                    "confirmations": 1,
-                    "status": "success",
-                    "timestamp": 1704067200
-                }
-            })))
+        .and(path("/transaction/state"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "transaction/state",
+            "params": {
+                "hash": "0xabcd1234"
+            }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "state": "success",
+                "hash": "0xabcd1234",
+                "confirmations": 1,
+                "block_num": 12345,
+                "timestamp": 1704067200,
+                "error": null
+            }
+        })))
         .expect(1)
         .mount(&mock_server)
         .await;
 
     let client = WalletClient::new(&mock_server.uri());
-    
-    let request = StakeRequest {
-        from: "cmx1abcd123".into(),
+    let stake_request = StakeRequest {
+        from: "cmx1sender...".to_string(),
         amount: 1000,
-        denom: "COMAI".into(),
+        denom: "COMAI".to_string(),
     };
-    
-    let result = client.stake(request).await.unwrap();
+
+    let result = client.stake(stake_request).await?;
     assert!(matches!(result.state, Txstate::Success));
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -323,11 +333,11 @@ async fn test_get_transaction_status() {
     let mock_server = MockServer::start().await;
     
     Mock::given(method("POST"))
-        .and(path("/transaction/status"))
+        .and(path("/transaction/state"))
         .and(body_json(json!({
             "jsonrpc": "2.0",
             "id": 1,
-            "method": "transaction/status",
+            "method": "transaction/state",
             "params": {
                 "hash": "0x123..."
             }
@@ -339,7 +349,7 @@ async fn test_get_transaction_status() {
                 "result": {
                     "block_num": 12345,
                     "confirmations": 5,
-                    "status": "success",
+                    "state": "success",
                     "timestamp": 1704067200,
                     "error": null
                 }
