@@ -1,17 +1,32 @@
 # Communex API Client
 
-This is a Rust implementation of the Communex API client, optimized for performance and designed to work asynchronously. The library provides methods for interacting with the blockchain via RPC commands through a FastAPI interface.
+A high-performance, asynchronous Rust implementation for interacting with the Communex blockchain through RPC commands. This library provides robust caching, comprehensive error handling, and support for wallet operations.
 
 ## Features
 
-- **Query Map Caching**: Efficient caching layer with configurable TTL and background refresh worker.
-- **Metrics**: Track cache hits, misses, and refresh failures.
-- **Asynchronous Operations**: Designed to handle batch requests efficiently.
-- **Comprehensive Test Coverage**: Includes tests for types, RPC client, query map, and error handling.
+- **Asynchronous Operations**: Built on tokio for efficient async/await support
+- **Query Map Caching**: 
+  - Configurable TTL and background refresh
+  - Automatic cache invalidation
+  - Performance metrics tracking
+- **Wallet Operations**:
+  - Transaction management
+  - Balance queries
+  - Staking operations
+  - Transaction status tracking
+- **Cryptographic Security**:
+  - SR25519 key management
+  - Transaction signing and verification
+  - Address derivation
+- **RPC Client**:
+  - Automatic retry mechanism
+  - Batch request support
+  - Configurable timeouts
+  - Comprehensive error handling
 
 ## Installation
 
-To use this library, add the following to your `Cargo.toml`:
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -20,12 +35,52 @@ comx-api = { git = "https://github.com/your-repo/comx-api.git" }
 
 ## Usage
 
-### Query Map Cache
-
-The `QueryMapCache` provides a caching layer for query results with a configurable time-to-live (TTL) and background refresh capabilities.
+### Wallet Operations
 
 ```rust
-use comx_api::cache::{QueryMapCache, CacheConfig, QueryResult};
+use comx_api::wallet::{WalletClient, TransferRequest};
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() {
+    let client = WalletClient::new("http://your-node-url");
+    
+    // Transfer tokens
+    let transfer = TransferRequest {
+        from: "cmx1sender...".into(),
+        to: "cmx1receiver...".into(),
+        amount: 1000,
+        denom: "COMAI".into(),
+    };
+    
+    let result = client.transfer(transfer).await?;
+}
+```
+
+### Staking Operations
+
+```rust
+use comx_api::wallet::{WalletClient, staking::StakeRequest};
+
+#[tokio::main]
+async fn main() {
+    let client = WalletClient::new("http://your-node-url");
+    
+    // Stake tokens
+    let stake = StakeRequest {
+        from: "cmx1sender...".into(),
+        amount: 1000,
+        denom: "COMAI".into(),
+    };
+    
+    let result = client.stake(stake).await?;
+}
+```
+
+### Query Map Cache
+
+```rust
+use comx_api::cache::{QueryMapCache, CacheConfig};
 use std::time::Duration;
 
 #[tokio::main]
@@ -37,59 +92,35 @@ async fn main() {
     };
     
     let cache = QueryMapCache::new(config);
-    let query_key = "example_query";
-    let result = QueryResult::new("example_data");
-    
-    cache.set(query_key, result).await;
-    if let Some(cached_result) = cache.get(query_key).await {
-        println!("Cached data: {}", cached_result.data);
-    }
+    cache.start_background_refresh().await;
 }
 ```
 
-### Query Map
+## Error Handling
 
-The `QueryMap` provides high-level access to blockchain state queries with caching support. It automatically handles RPC communication and response parsing.
+The library provides comprehensive error handling through the `CommunexError` enum, covering:
+- RPC communication errors
+- Transaction validation
+- Address formatting
+- Cryptographic operations
+- Cache operations
+- Configuration validation
 
-```rust
-use comx_api::rpc::RpcClient;
-use comx_api::query_map::{QueryMap, QueryMapConfig};
-use std::time::Duration;
+## Testing
 
-#[tokio::main]
-async fn main() {
-    let client = RpcClient::new("http://your-node-url");
-    let config = QueryMapConfig {
-        refresh_interval: Duration::from_secs(300),
-        cache_duration: Duration::from_secs(600),
-    };
-    
-    let query_map = QueryMap::new(client, config).unwrap();
-    // Use the query map...
-}
-```
-
-### Wallet Operations
-
-The `WalletClient` provides methods for managing transfers, staking, and transaction tracking:
-
-```rust
-use comx_api::wallet::{WalletClient, TransferRequest, StakeRequest, TransactionStatus};
-use std::time::Duration;
-
-#[tokio::main]
-async fn main() {
-    let client = WalletClient::new("http://your-node-url");
-    // Use the wallet client...
-}
-```
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
+The library includes extensive test coverage:
+- Unit tests for all core functionality
+- Integration tests with mock RPC servers
+- Cryptographic operation validation
+- Error handling scenarios
+- Cache behavior verification
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License - See LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please check the PROGRESS.md file for current development status and planned features.
 
 
