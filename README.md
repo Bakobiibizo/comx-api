@@ -130,12 +130,28 @@ The library provides comprehensive error handling through the `CommunexError` en
 
 ## Testing
 
-The library includes extensive test coverage:
+The module client includes comprehensive test coverage:
+
 - Unit tests for all core functionality
-- Integration tests with mock RPC servers
-- Cryptographic operation validation
+- Integration tests for API interactions
+- Mock server tests for HTTP interactions
+- Retry mechanism validation
 - Error handling scenarios
-- Cache behavior verification
+- Rate limiting tests
+- Cache behavior tests
+
+Test patterns used:
+- Wiremock for HTTP mocking
+- Sequence-based response patterns
+- Timeout and retry scenarios
+- Edge case validation
+
+To run tests:
+```bash
+cargo test
+```
+
+All tests are properly documented and follow best practices for async testing in Rust.
 
 ## License
 
@@ -144,5 +160,3 @@ MIT License - See LICENSE file for details.
 ## Contributing
 
 Contributions are welcome! Please check the PROGRESS.md file for current development status and planned features.
-
-

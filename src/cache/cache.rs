@@ -1,15 +1,11 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
 use std::time::Instant;
 use crate::error::CommunexError;
-use super::CacheConfig;
-use std::pin::Pin;
-use std::future::Future;
-use std::time::Duration;
-use std::fmt;
+use std::fmt::{self, Debug};
 
-type RefreshHandler = Box<dyn Fn(&str) -> Pin<Box<dyn Future<Output = Result<QueryResult, CommunexError>> + Send>> + Send + Sync>;
+type RefreshHandler = Box<dyn Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<QueryResult, CommunexError>> + Send>> + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryResult {
@@ -43,13 +39,15 @@ pub struct CacheMetrics {
     pub hits: u64,
     pub misses: u64,
     pub refresh_failures: u64,
+    pub refresh_success_count: u64,
+    pub refresh_error_count: u64,
     pub current_entries: usize,
 }
 
 #[derive(Clone)]
 pub struct QueryMapCache {
     entries: Arc<RwLock<HashMap<String, CacheEntry>>>,
-    config: CacheConfig,
+    config: super::CacheConfig,
     metrics: Arc<RwLock<CacheMetrics>>,
     refresh_handler: Arc<RwLock<Option<RefreshHandler>>>,
 }
@@ -66,7 +64,7 @@ impl fmt::Debug for QueryMapCache {
 }
 
 impl QueryMapCache {
-    pub fn new(config: CacheConfig) -> Self {
+    pub fn new(config: super::CacheConfig) -> Self {
         Self {
             entries: Arc::new(RwLock::new(HashMap::new())),
             config,
@@ -128,25 +126,29 @@ impl QueryMapCache {
                 tokio::time::sleep(cache.config.refresh_interval).await;
                 
                 // Get all keys that need refresh
-                let keys_to_refresh = {
-                    let entries = cache.entries.read().await;
-                    entries
-                        .iter()
-                        .filter(|(_, entry)| entry.expires_at <= Instant::now())
-                        .map(|(k, _)| k.clone())
-                        .collect::<Vec<String>>()
-                };
-                
-                // Process each key
+                let mut keys_to_refresh = Vec::new();
+                for (key, entry) in cache.entries.read().await.iter() {
+                    if entry.expires_at <= Instant::now() {
+                        keys_to_refresh.push(key.clone());
+                    }
+                }
+                drop(cache.entries.read().await);
+
                 for key in keys_to_refresh {
                     if let Some(handler) = cache.refresh_handler.read().await.as_ref() {
                         match handler(&key).await {
                             Ok(new_value) => {
-                                cache.set(&key, new_value).await;
-                            },
+                                let mut entries = cache.entries.write().await;
+                                if let Some(entry) = entries.get_mut(&key) {
+                                    entry.value = new_value;
+                                    entry.expires_at = Instant::now() + cache.config.ttl;
+                                }
+                                let mut metrics = cache.metrics.write().await;
+                                metrics.refresh_success_count += 1;
+                            }
                             Err(_) => {
                                 let mut metrics = cache.metrics.write().await;
-                                metrics.refresh_failures += 1;
+                                metrics.refresh_error_count += 1;
                             }
                         }
                     }
@@ -160,7 +162,7 @@ impl QueryMapCache {
     pub(crate) async fn force_expire(&self, key: &str) {
         let mut entries = self.entries.write().await;
         if let Some(entry) = entries.get_mut(key) {
-            entry.expires_at = Instant::now() - Duration::from_secs(1);
+            entry.expires_at = Instant::now() - std::time::Duration::from_secs(1);
         }
     }
 } 

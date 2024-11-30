@@ -1,5 +1,24 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::time::Duration;
+use std::clone::Clone;
+
+/// Error information returned from module
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModuleError {
+    /// Error code
+    pub code: u16,
+    /// Error message
+    pub message: String,
+}
+
+/// Response from module calls  
+#[derive(Debug, Clone)]
+pub struct ModuleResponse<T> where T: DeserializeOwned + 'static {
+    /// Response data
+    pub data: T,
+    /// Error information if present
+    pub error: Option<ModuleError>,
+}
 
 /// Configuration for the module client
 #[derive(Debug, Clone)]
@@ -26,30 +45,12 @@ impl Default for ModuleClientConfig {
 }
 
 /// Request parameters for module calls
-#[derive(Debug, Serialize)]
-pub struct ModuleRequest<T> {
+#[derive(Debug, Clone, Serialize)]
+pub struct ModuleRequest<T> where T: Clone + serde::Serialize {
     /// Target SS58 address
     pub target_key: String,
     /// Method-specific parameters
     pub params: T,
-}
-
-/// Response from module calls
-#[derive(Debug, Deserialize)]
-pub struct ModuleResponse<T> {
-    /// Response data
-    pub data: T,
-    /// Error information if present
-    pub error: Option<ModuleError>,
-}
-
-/// Error information returned from module
-#[derive(Debug, Deserialize)]
-pub struct ModuleError {
-    /// Error code
-    pub code: u16,
-    /// Error message
-    pub message: String,
 }
 
 /// Custom error types for module client
@@ -87,4 +88,4 @@ pub enum ClientError {
     
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
-} 
+}

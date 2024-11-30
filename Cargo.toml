@@ -21,11 +21,16 @@ num-bigint = "0.4"
 tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
+wiremock = "0.5"
 
 [dev-dependencies]
 mockito = "1.2"
 tokio = { version = "1.0", features = ["full", "test-util"] }
 serial_test = "2.0"
-wiremock = "0.5"
 chrono = { version = "0.4", features = ["serde"] }
 serde_json = "1.0"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[[bench]]
+name = "client_benchmarks"
+harness = false

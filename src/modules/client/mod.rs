@@ -1,14 +1,13 @@
+mod types;
+
+pub use types::{ModuleClientConfig, ClientError, ModuleRequest, ModuleResponse};
+
 use crate::crypto::KeyPair;
 use reqwest::{Client as HttpClient, header};
-use std::fmt::Display;
+use serde::Serialize;
 use std::time::Duration;
-use tokio::time::timeout;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
-use self::types::{ClientError, ModuleClientConfig, ModuleRequest, ModuleResponse};
-
-pub mod types;
+use hex;
 
 /// Client for communicating with module servers
 pub struct ModuleClient {
@@ -40,45 +39,93 @@ impl ModuleClient {
     /// Call a module method
     pub async fn call<T, R>(&self, method: &str, target_key: &str, params: T) -> Result<R, ClientError>
     where
-        T: serde::Serialize,
+        T: serde::Serialize + Clone,
         R: serde::de::DeserializeOwned,
     {
         let timestamp = Utc::now();
         let request = self.build_request(method, target_key, params, timestamp)?;
         
-        for retry in 0..self.config.max_retries {
-            match self.execute_request(&request, timestamp).await {
+        let mut last_error = None;
+        for retry in 0..=self.config.max_retries {
+            match self.execute_request(&method, request.0.clone(), request.1.clone(), request.2.clone()).await {
                 Ok(response) => return Ok(response),
                 Err(e) => {
-                    if retry == self.config.max_retries - 1 || !self.should_retry(&e) {
+                    if !self.should_retry(&e) {
                         return Err(e);
                     }
-                    tokio::time::sleep(self.calculate_backoff(retry)).await;
+                    last_error = Some(e);
+                    if retry < self.config.max_retries {
+                        tokio::time::sleep(self.calculate_backoff(retry)).await;
+                    }
                 }
             }
         }
         
-        Err(ClientError::MaxRetriesExceeded)
+        Err(last_error.unwrap_or(ClientError::MaxRetriesExceeded))
     }
 
-    fn build_request<T: serde::Serialize>(
+    async fn execute_request<T: Serialize + Clone, R>(
+        &self,
+        method: &str,
+        url: String,
+        headers: header::HeaderMap,
+        request: ModuleRequest<T>,
+    ) -> Result<R, ClientError>
+    where
+        R: serde::de::DeserializeOwned, T: Serialize,
+    {
+        let response = self.http_client
+            .post(&url)
+            .headers(headers)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| match e.is_timeout() {
+                true => ClientError::Timeout(self.config.timeout),
+                false => ClientError::RequestFailed(e.to_string()),
+            })?;
+
+        match response.status() {
+            reqwest::StatusCode::OK => {
+                response.json::<R>().await.map_err(|e| ClientError::RequestFailed(e.to_string()))
+            }
+            reqwest::StatusCode::UNAUTHORIZED => Err(ClientError::Unauthorized),
+            reqwest::StatusCode::TOO_MANY_REQUESTS => Err(ClientError::RateLimitExceeded),
+            reqwest::StatusCode::NOT_FOUND => Err(ClientError::MethodNotFound(method.to_string())),
+            status => Err(ClientError::ServerError(status.to_string())),
+        }
+    }
+
+    fn build_request<T>(
         &self,
         method: &str,
         target_key: &str,
         params: T,
         timestamp: DateTime<Utc>,
-    ) -> Result<(String, header::HeaderMap, ModuleRequest<T>), ClientError> {
+    ) -> Result<(String, header::HeaderMap, ModuleRequest<T>), ClientError>
+    where
+        T: serde::Serialize + Clone,
+    {
         let request = ModuleRequest {
             target_key: target_key.to_string(),
             params,
         };
 
-        let url = format!(
-            "http://{}:{}/{}",
-            self.config.host, self.config.port, method
-        );
+        // Handle URLs with and without port numbers
+        let url = if self.config.port == 0 {
+            format!("{}/{}", self.config.host.trim_end_matches('/'), method)
+        } else {
+            format!(
+                "{}:{}/{}",
+                self.config.host.trim_end_matches('/'),
+                self.config.port,
+                method
+            )
+        };
 
-        let signature = self.sign_request(&request, timestamp)?;
+        let message = serde_json::to_string(&request)
+            .map_err(ClientError::SerializationError)?;
+        let signature = self.sign_request(&message)?;
         let headers = self.build_headers(signature, timestamp)?;
 
         Ok((url, headers, request))
@@ -88,7 +135,6 @@ impl ModuleClient {
         matches!(
             error,
             ClientError::Timeout(_) | 
-            ClientError::RateLimitExceeded |
             ClientError::ServerError(_)
         )
     }
@@ -104,19 +150,28 @@ impl ModuleClient {
     ) -> Result<header::HeaderMap, ClientError> {
         let mut headers = header::HeaderMap::new();
         
-        // Add required headers with proper error handling
-        headers.insert("X-Signature", signature.parse().map_err(|_| ClientError::InvalidHeader)?);
-        headers.insert("X-Key", self.keypair.public_key().to_string().parse().map_err(|_| ClientError::InvalidHeader)?);
-        headers.insert("X-Crypto", "sr25519".parse().map_err(|_| ClientError::InvalidHeader)?);
-        headers.insert("X-Timestamp", timestamp.to_rfc3339().parse().map_err(|_| ClientError::InvalidHeader)?);
+        headers.insert(
+            header::CONTENT_TYPE,
+            "application/json".parse().map_err(|_| ClientError::InvalidHeader)?
+        );
+        headers.insert(
+            "X-Signature",
+            signature.parse().map_err(|_| ClientError::InvalidHeader)?
+        );
+        headers.insert(
+            "X-Key",
+            self.keypair.public_key_hex().parse().map_err(|_| ClientError::InvalidHeader)?
+        );
+        headers.insert(
+            "X-Timestamp",
+            timestamp.to_rfc3339().parse().map_err(|_| ClientError::InvalidHeader)?
+        );
 
         Ok(headers)
     }
 
-    // Helper method to sign requests
-    fn sign_request<T: serde::Serialize>(&self, request: &ModuleRequest<T>) -> Result<String, ClientError> {
-        let message = serde_json::to_string(request)
-            .map_err(|e| ClientError::RequestFailed(e.to_string()))?;
-        Ok(self.keypair.sign(message.as_bytes()))
+    fn sign_request(&self, message: &str) -> Result<String, ClientError> {
+        let signature = self.keypair.sign(message.as_bytes());
+        Ok(hex::encode(signature))
     }
 }

@@ -64,28 +64,8 @@ pub enum CommunexError {
 }
 
 impl CommunexError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ConnectionError(msg) => write!(f, "Connection error: {}", msg),
-            Self::ParseError(msg) => write!(f, "Parse error: {}", msg),
-            Self::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
-            Self::RpcError { code, message } => 
-                write!(f, "RPC error {}: {}", code, message),
-            Self::ValidationError(msg) => write!(f, "Validation error: {}", msg),
-            Self::InvalidAddress(msg) => write!(f, "Invalid address: {}", msg),
-            Self::InvalidTransaction(msg) => write!(f, "Invalid transaction: {}", msg),
-            Self::InvalidSeedPhrase(msg) => write!(f, "Invalid seed phrase: {}", msg),
-            Self::SigningError(msg) => write!(f, "Signing error: {}", msg),
-            Self::InvalidSignature(msg) => write!(f, "Invalid signature: {}", msg),
-            Self::KeyDerivationError(msg) => write!(f, "Key derivation error: {}", msg),
-            Self::MalformedResponse(msg) => write!(f, "Malformed response: {}", msg),
-            Self::BatchRpcError(errors) => write!(f, "Batch RPC errors: {}", format_errors(errors)),
-            Self::CommunexError(msg) => write!(f, "Communex error: {}", msg),
-            Self::InvalidBalance(msg) => write!(f, "Invalid balance: {}", msg),
-            Self::InvalidAmount(msg) => write!(f, "Invalid amount: {}", msg),
-            Self::InvalidDenom(msg) => write!(f, "Invalid denomination: {}", msg),
-            Self::RequestTimeout(msg) => write!(f, "Request timeout: {}", msg),
-        }
+    pub fn to_string(&self) -> String {
+        format!("{}", self)
     }
 }
 

@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[derive(Debug)]
 pub struct QueryMap {
     client: Arc<RpcClient>,
+    #[allow(dead_code)]  // Used for configuration but not read directly
     config: QueryMapConfig,
     refresh_count: AtomicU64,
 }
