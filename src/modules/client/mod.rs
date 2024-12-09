@@ -13,10 +13,10 @@ use hex;
 
 /// Client for communicating with module servers
 pub struct ModuleClient {
-    config: ModuleClientConfig,
-    http_client: HttpClient,
-    keypair: KeyPair,
-    endpoint_registry: EndpointRegistry,
+    pub config: ModuleClientConfig,
+    pub http_client: HttpClient,
+    pub keypair: KeyPair,
+    pub endpoint_registry: EndpointRegistry,
 }
 
 impl ModuleClient {

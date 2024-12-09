@@ -118,6 +118,30 @@ async fn main() {
 }
 ```
 
+## Running the Program
+
+To execute the program, ensure you have the Rust toolchain installed. Run the following command to start the application:
+
+```bash
+cargo run
+```
+
+### Testing and Benchmarking
+
+Run the tests to ensure everything is working as expected:
+
+```bash
+cargo test
+```
+
+To execute benchmarks, use:
+
+```bash
+cargo bench
+```
+
+Ensure that all dependencies are installed and up-to-date before running these commands.
+
 ## Error Handling
 
 The library provides comprehensive error handling through the `CommunexError` enum, covering:

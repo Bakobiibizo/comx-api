@@ -3,11 +3,11 @@ use comx_api::{
     modules::client::{ModuleClient, ModuleClientConfig, ClientError},
 };
 use wiremock::{
-    matchers::{method, path, header, header_exists},
+    matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestParams {
@@ -113,7 +113,7 @@ async fn test_module_client_retry_success() {
     let client = ModuleClient::with_config(config, keypair.clone());
     
     // Set up mock to handle both requests with different responses based on sequence
-    let sequence_count = AtomicUsize::new(0);
+    let _sequence_count = AtomicUsize::new(0);
     Mock::given(method("POST"))
         .and(path("/test_method"))
         .respond_with(ResponseTemplate::new(500))
