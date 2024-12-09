@@ -32,6 +32,11 @@
   - [x] Add transaction status tracking
   - [x] Implement staking operations
   - [x] Add batch transfer support with timeout handling
+- [x] MVP Completion
+  - [x] Wallet Operations: Including balance retrieval, transfers, staking, and unstaking.
+  - [x] Transaction Management: Batch transfers, transaction state, and history retrieval.
+  - [x] Query Maps: Efficient querying of balances and staking information.
+  - [x] API Documentation: Comprehensive Swagger documentation covering all endpoints.
 
 ## Progress Log
 

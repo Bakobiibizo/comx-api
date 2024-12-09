@@ -24,6 +24,17 @@ A high-performance, asynchronous Rust implementation for interacting with the Co
   - Configurable timeouts
   - Comprehensive error handling
 
+## Overview
+
+The Communex API provides a comprehensive interface for managing wallet operations, transactions, and blockchain queries. This API is designed to facilitate seamless integration with blockchain services, offering robust functionality for developers.
+
+## Key Features
+
+- **Wallet Operations**: Retrieve balances, perform transfers, stake and unstake tokens.
+- **Transaction Management**: Batch transfers, track transaction states, and access transaction history.
+- **Query Maps**: Efficiently query balances and staking information.
+- **API Documentation**: Detailed Swagger documentation available for all endpoints.
+
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -32,6 +43,21 @@ Add to your `Cargo.toml`:
 [dependencies]
 comx-api = { git = "https://github.com/your-repo/comx-api.git" }
 ```
+
+## Getting Started
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/your-repo/communex-api.git
+   ```
+
+2. **Run the Server**:
+   ```bash
+   cargo run
+   ```
+
+3. **Access the Swagger UI**:
+   Navigate to `http://localhost:8080/swagger` to view the API documentation.
 
 ## Usage
 
@@ -184,3 +210,12 @@ MIT License - See LICENSE file for details.
 ## Contributing
 
 Contributions are welcome! Please check the PROGRESS.md file for current development status and planned features.
+
+## Next Steps
+
+- Implement additional security features.
+- Gather user feedback for further improvements.
+
+## Contributing
+
+Contributions are welcome! Please submit a pull request or open an issue for any enhancements or bug fixes.
