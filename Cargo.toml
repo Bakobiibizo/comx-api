@@ -22,6 +22,10 @@ tokio = { version = "1.0", features = ["full"] }
 futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 wiremock = "0.5"
+actix-web = "4.0.0-beta.8"
+derive_more = "1.0.0"
+lazy_static = "1.4"
+actix-files = "0.6.2"
 
 [dev-dependencies]
 mockito = "1.2"

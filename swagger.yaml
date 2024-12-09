@@ -1,0 +1,391 @@
+openapi: 3.0.0
+info:
+  title: Communex API
+  description: API documentation for the Communex API client.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /balance/{address}:
+    get:
+      summary: Get Balance
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Balance retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+  /transfer:
+    post:
+      summary: Transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from:
+                  type: string
+                to:
+                  type: string
+                amount:
+                  type: integer
+                denom:
+                  type: string
+      responses:
+        '200':
+          description: Transfer successful
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /sign_transaction:
+    post:
+      summary: Sign Transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transaction:
+                  type: string
+      responses:
+        '200':
+          description: Transaction signed successfully
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+  /endpoints:
+    get:
+      summary: List Endpoints
+      responses:
+        '200':
+          description: List of endpoints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      summary: Register Endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                protocol:
+                  type: string
+      responses:
+        '201':
+          description: Endpoint registered
+        '500':
+          description: Internal server error
+  /endpoints/{name}:
+    get:
+      summary: Get Endpoint
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Endpoint details
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Endpoint not found
+  /calls:
+    post:
+      summary: Call Method
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method:
+                  type: string
+                target_key:
+                  type: string
+                params:
+                  type: object
+      responses:
+        '200':
+          description: Method called successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /stake:
+    post:
+      summary: Stake Tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from:
+                  type: string
+                amount:
+                  type: integer
+                denom:
+                  type: string
+      responses:
+        '200':
+          description: Stake successful
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /unstake:
+    post:
+      summary: Unstake Tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from:
+                  type: string
+                amount:
+                  type: integer
+                denom:
+                  type: string
+      responses:
+        '200':
+          description: Unstake successful
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /staking/info:
+    get:
+      summary: Get Staking Info
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Staking information retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /staking/claim:
+    post:
+      summary: Claim Staking Rewards
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address:
+                  type: string
+      responses:
+        '200':
+          description: Rewards claimed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /batch_transfer:
+    post:
+      summary: Batch Transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transfers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      from:
+                        type: string
+                      to:
+                        type: string
+                      amount:
+                        type: integer
+                      denom:
+                        type: string
+      responses:
+        '200':
+          description: Batch transfer successful
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /transaction/state:
+    get:
+      summary: Get Transaction State
+      parameters:
+        - name: tx_hash
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction state retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /transaction/history:
+    get:
+      summary: Get Transaction History
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '500':
+          description: Internal server error
+  /query_balance:
+    get:
+      summary: Get Balance
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Balance retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '500':
+          description: Internal server error
+  /query_balances:
+    post:
+      summary: Get Balances
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                addresses:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Balances retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '500':
+          description: Internal server error
+  /query_staketo:
+    get:
+      summary: Get Stake To
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stake to addresses retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: Internal server error
+  /query_stakefrom:
+    get:
+      summary: Get Stake From
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stake from addresses retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: Internal server error

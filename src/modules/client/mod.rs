@@ -10,13 +10,29 @@ use serde::Serialize;
 use std::time::Duration;
 use chrono::{DateTime, Utc};
 use hex;
+use core::ops::{Deref, DerefMut};
 
 /// Client for communicating with module servers
+#[derive(Clone)]
 pub struct ModuleClient {
     pub config: ModuleClientConfig,
     pub http_client: HttpClient,
     pub keypair: KeyPair,
     pub endpoint_registry: EndpointRegistry,
+}
+
+impl Deref for ModuleClient {
+    type Target = ModuleClientConfig;
+
+    fn deref(&self) -> &Self::Target {
+        &self.config
+    }
+}   
+
+impl DerefMut for ModuleClient {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.config
+    }
 }
 
 impl ModuleClient {
