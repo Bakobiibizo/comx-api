@@ -60,6 +60,9 @@ pub enum CommunexError {
 
     #[error("Request timeout: {0}")]
     RequestTimeout(String),
+
+    #[error("Invalid Header: {0}")]
+    InvalidHeader(String),
     
 }
 

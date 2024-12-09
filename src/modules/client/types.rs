@@ -59,17 +59,11 @@ pub enum ClientError {
     #[error("Network timeout after {0:?}")]
     Timeout(Duration),
     
-    #[error("Request failed: {0}")]
-    RequestFailed(String),
+    #[error("HTTP error: {0}")]
+    HttpError(#[from] reqwest::Error),
     
-    #[error("Invalid signature")]
-    InvalidSignature,
-    
-    #[error("Invalid header value")]
-    InvalidHeader,
-    
-    #[error("Unauthorized")]
-    Unauthorized,
+    #[error("Invalid response: {0}")]
+    InvalidResponse(String),
     
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
@@ -77,15 +71,30 @@ pub enum ClientError {
     #[error("Maximum retries exceeded")]
     MaxRetriesExceeded,
     
+    #[error("Access denied: {0}")]
+    AccessDenied(String),
+    
+    #[error("Endpoint not found: {0}")]
+    EndpointNotFound(String),
+    
+    #[error("Unknown error occurred")]
+    Unknown,
+    
+    #[error("Request failed: {0}")]
+    RequestFailed(String),
+
+    #[error("Unauthorized access")]
+    Unauthorized,
+
     #[error("Method not found: {0}")]
     MethodNotFound(String),
-    
+
     #[error("Server error: {0}")]
     ServerError(String),
-    
-    #[error("JSON serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
-    
-    #[error("Network error: {0}")]
-    NetworkError(#[from] reqwest::Error),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    #[error("Invalid header")]
+    InvalidHeader,
 }

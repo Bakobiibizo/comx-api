@@ -1,6 +1,8 @@
 mod types;
+mod endpoint;
 
 pub use types::{ModuleClientConfig, ClientError, ModuleRequest, ModuleResponse};
+pub use endpoint::{EndpointConfig, EndpointRegistry, AccessLevel, RateLimit};
 
 use crate::crypto::KeyPair;
 use reqwest::{Client as HttpClient, header};
@@ -14,6 +16,7 @@ pub struct ModuleClient {
     config: ModuleClientConfig,
     http_client: HttpClient,
     keypair: KeyPair,
+    endpoint_registry: EndpointRegistry,
 }
 
 impl ModuleClient {
@@ -33,7 +36,18 @@ impl ModuleClient {
             config,
             http_client,
             keypair,
+            endpoint_registry: EndpointRegistry::new(),
         }
+    }
+
+    /// Register a new endpoint configuration
+    pub fn register_endpoint(&mut self, config: EndpointConfig) {
+        self.endpoint_registry.register(config);
+    }
+
+    /// Get endpoint configuration by name
+    pub fn get_endpoint(&self, name: &str) -> Option<&EndpointConfig> {
+        self.endpoint_registry.get(name)
     }
 
     /// Call a module method
@@ -42,26 +56,41 @@ impl ModuleClient {
         T: serde::Serialize + Clone,
         R: serde::de::DeserializeOwned,
     {
+        // Get endpoint configuration if it exists
+        let endpoint_config = self.endpoint_registry.get(method);
+        
+        // Validate access level if endpoint is configured
+        if let Some(config) = endpoint_config {
+            match config.access_level {
+                AccessLevel::Private | AccessLevel::Protected => {
+                    // Additional access validation could be added here
+                }
+                AccessLevel::Public => {}
+            }
+        }
+
         let timestamp = Utc::now();
         let request = self.build_request(method, target_key, params, timestamp)?;
         
         let mut last_error = None;
-        for retry in 0..=self.config.max_retries {
+        let max_retries = endpoint_config
+            .map(|c| if c.allow_retries { self.config.max_retries } else { 0 })
+            .unwrap_or(self.config.max_retries);
+
+        for retry in 0..=max_retries {
             match self.execute_request(&method, request.0.clone(), request.1.clone(), request.2.clone()).await {
                 Ok(response) => return Ok(response),
                 Err(e) => {
-                    if !self.should_retry(&e) {
+                    if retry == max_retries || !self.should_retry(&e) {
                         return Err(e);
                     }
                     last_error = Some(e);
-                    if retry < self.config.max_retries {
-                        tokio::time::sleep(self.calculate_backoff(retry)).await;
-                    }
+                    tokio::time::sleep(self.calculate_backoff(retry)).await;
                 }
             }
         }
         
-        Err(last_error.unwrap_or(ClientError::MaxRetriesExceeded))
+        Err(last_error.unwrap_or_else(|| ClientError::Unknown))
     }
 
     async fn execute_request<T: Serialize + Clone, R>(
@@ -124,7 +153,7 @@ impl ModuleClient {
         };
 
         let message = serde_json::to_string(&request)
-            .map_err(ClientError::SerializationError)?;
+            .map_err(|e| ClientError::SerializationError(e.to_string()))?;
         let signature = self.sign_request(&message)?;
         let headers = self.build_headers(signature, timestamp)?;
 
