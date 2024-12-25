@@ -1,161 +1,221 @@
-# Communex Rust API Client
+# Communex API Client
 
-A Rust implementation of the Communex blockchain client API, optimized for high performance and async operations.
+A high-performance, asynchronous Rust implementation for interacting with the Communex blockchain through RPC commands. This library provides robust caching, comprehensive error handling, and support for wallet operations.
 
 ## Features
 
-- Async RPC client with configurable retry mechanism
-- Batch request support for efficient operations
-- Query Map for blockchain state queries with validation
-- SR25519 cryptographic operations using Substrate primitives
-- Comprehensive error handling and response validation
-- Full test coverage with mocked responses
-- Type-safe balance and address handling
+- **Asynchronous Operations**: Built on tokio for efficient async/await support
+- **Query Map Caching**: 
+  - Configurable TTL and background refresh
+  - Automatic cache invalidation
+  - Performance metrics tracking
+- **Wallet Operations**:
+  - Transaction management
+  - Balance queries
+  - Staking operations
+  - Transaction status tracking
+- **Cryptographic Security**:
+  - SR25519 key management
+  - Transaction signing and verification
+  - Address derivation
+- **RPC Client**:
+  - Automatic retry mechanism
+  - Batch request support
+  - Configurable timeouts
+  - Comprehensive error handling
+
+## Overview
+
+The Communex API provides a comprehensive interface for managing wallet operations, transactions, and blockchain queries. This API is designed to facilitate seamless integration with blockchain services, offering robust functionality for developers.
+
+## Key Features
+
+- **Wallet Operations**: Retrieve balances, perform transfers, stake and unstake tokens.
+- **Transaction Management**: Batch transfers, track transaction states, and access transaction history.
+- **Query Maps**: Efficiently query balances and staking information.
+- **API Documentation**: Detailed Swagger documentation available for all endpoints.
 
 ## Installation
 
-Add to your Cargo.toml:
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-comx-api = "0.1.0"
-tokio = { version = "1.0", features = ["full"] }
+comx-api = { git = "https://github.com/your-repo/comx-api.git" }
 ```
 
-## Quick Start
+## Getting Started
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/your-repo/communex-api.git
+   ```
+
+2. **Run the Server**:
+   ```bash
+   cargo run
+   ```
+
+3. **Access the Swagger UI**:
+   Navigate to `http://localhost:8080/swagger` to view the API documentation.
+
+## Usage
+
+### Wallet Operations
 
 ```rust
-use comx_api::{
-    QueryMap, 
-    QueryMapConfig,
-    rpc::{RpcClient, RpcClientConfig},
-    types::{Address, Balance}
-};
+use comx_api::wallet::{WalletClient, TransferRequest};
 use std::time::Duration;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Configure RPC client
-    let rpc_config = RpcClientConfig {
-        timeout: Duration::from_secs(30),
-        max_retries: 3,
+async fn main() {
+    // Create client with custom timeout
+    let client = WalletClient::with_timeout(
+        "http://your-node-url",
+        Duration::from_secs(30)
+    );
+    
+    // Single transfer
+    let transfer = TransferRequest {
+        from: "cmx1sender...".into(),
+        to: "cmx1receiver...".into(),
+        amount: 1000,
+        denom: "COMAI".into(),
     };
-    let client = RpcClient::new_with_config("http://your-node-url", rpc_config);
     
-    // Configure and create QueryMap
-    let query_config = QueryMapConfig {
-        refresh_interval: Duration::from_secs(300), // 5 minutes
-        cache_duration: Duration::from_secs(600),   // 10 minutes
-    };
-    let query_map = QueryMap::new(client, query_config)?;
-    
-    // Query single balance
-    let address = Address::from_str("cmx1abc...")?;
-    let balance = query_map.get_balance(&address).await?;
-    println!("Balance: {} {}", balance.amount()?, balance.denom());
-    
-    // Batch balance query
-    let addresses = vec![
-        Address::from_str("cmx1abc...")?,
-        Address::from_str("cmx1def...")?
+    let result = client.transfer(transfer).await?;
+
+    // Batch transfer
+    let transfers = vec![
+        TransferRequest {
+            from: "cmx1sender...".into(),
+            to: "cmx1receiver1...".into(),
+            amount: 1000,
+            denom: "COMAI".into(),
+        },
+        TransferRequest {
+            from: "cmx1sender...".into(),
+            to: "cmx1receiver2...".into(),
+            amount: 2000,
+            denom: "COMAI".into(),
+        },
     ];
-    let balances = query_map.get_balances(&addresses).await?;
     
-    // Query stake relationships
-    let stake_from = query_map.get_stake_from(&address).await?;
-    let stake_to = query_map.get_stake_to(&address).await?;
-    
-    Ok(())
+    let batch_result = client.batch_transfer(transfers).await?;
 }
 ```
 
-## RPC Operations
+### Staking Operations
 
 ```rust
-use comx_api::rpc::{RpcClient, BatchRequest};
-use serde_json::json;
+use comx_api::wallet::{WalletClient, staking::StakeRequest};
 
-// Create RPC client with default config
-let client = RpcClient::new("http://your-node-url");
-
-// Single request with retry handling
-let response = client.request(
-    "query_balance",
-    json!({
-        "address": "cmx1abc..."
-    })
-).await?;
-
-// Batch request
-let mut batch = BatchRequest::new();
-batch.add_request("query_balance", json!({"address": "cmx1abc..."}));
-batch.add_request("query_balance", json!({"address": "cmx1def..."}));
-let responses = client.batch_request(batch).await?;
-```
-
-## Error Handling
-
-```rust
-use comx_api::error::CommunexError;
-
-match query_map.get_balance(&address).await {
-    Ok(balance) => println!("Balance: {}", balance),
-    Err(CommunexError::ConnectionError(msg)) => eprintln!("Connection failed: {}", msg),
-    Err(CommunexError::RpcError { code, message }) => eprintln!("RPC error {}: {}", code, message),
-    Err(e) => eprintln!("Other error: {}", e),
+#[tokio::main]
+async fn main() {
+    let client = WalletClient::new("http://your-node-url");
+    
+    // Stake tokens
+    let stake = StakeRequest {
+        from: "cmx1sender...".into(),
+        amount: 1000,
+        denom: "COMAI".into(),
+    };
+    
+    let result = client.stake(stake).await?;
 }
 ```
 
-## Development
+### Query Map Cache
 
-### Prerequisites
+```rust
+use comx_api::cache::{QueryMapCache, CacheConfig};
+use std::time::Duration;
 
-- Rust 1.70 or higher
-- Cargo
+#[tokio::main]
+async fn main() {
+    let config = CacheConfig {
+        ttl: Duration::from_secs(60),
+        refresh_interval: Duration::from_secs(300),
+        max_entries: 1000,
+    };
+    
+    let cache = QueryMapCache::new(config);
+    cache.start_background_refresh().await;
+}
+```
 
-### Building
+## Running the Program
+
+To execute the program, ensure you have the Rust toolchain installed. Run the following command to start the application:
 
 ```bash
-cargo build --release
+cargo run
 ```
 
-### Testing
+### Testing and Benchmarking
+
+Run the tests to ensure everything is working as expected:
 
 ```bash
 cargo test
 ```
 
-## Project Structure
+To execute benchmarks, use:
 
-```
-src/
-├── error/      # Error types and handling
-├── rpc/        # RPC client implementation
-│   ├── client.rs
-│   └── batch.rs
-├── query_map/  # Query Map implementation
-│   ├── config.rs
-│   └── query_map.rs
-├── types/      # Core types
-│   ├── address.rs
-│   ├── balance.rs
-│   └── transaction.rs
-└── lib.rs      # Library root
+```bash
+cargo bench
 ```
 
-## Contributing
+Ensure that all dependencies are installed and up-to-date before running these commands.
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+## Error Handling
 
-Please make sure to update tests as appropriate.
+The library provides comprehensive error handling through the `CommunexError` enum, covering:
+- RPC communication errors
+- Transaction validation
+- Address formatting
+- Cryptographic operations
+- Cache operations
+- Configuration validation
+
+## Testing
+
+The module client includes comprehensive test coverage:
+
+- Unit tests for all core functionality
+- Integration tests for API interactions
+- Mock server tests for HTTP interactions
+- Retry mechanism validation
+- Error handling scenarios
+- Rate limiting tests
+- Cache behavior tests
+
+Test patterns used:
+- Wiremock for HTTP mocking
+- Sequence-based response patterns
+- Timeout and retry scenarios
+- Edge case validation
+
+To run tests:
+```bash
+cargo test
+```
+
+All tests are properly documented and follow best practices for async testing in Rust.
 
 ## License
 
-[MIT](LICENSE)
+MIT License - See LICENSE file for details.
 
-## Acknowledgments
+## Contributing
 
-- Built using Substrate primitives for cryptographic operations
-- Compatible with Communex blockchain ecosystem
+Contributions are welcome! Please check the PROGRESS.md file for current development status and planned features.
 
+## Next Steps
 
+- Implement additional security features.
+- Gather user feedback for further improvements.
+
+## Contributing
+
+Contributions are welcome! Please submit a pull request or open an issue for any enhancements or bug fixes.

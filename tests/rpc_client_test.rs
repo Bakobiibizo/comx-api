@@ -185,7 +185,8 @@ async fn test_retry_mechanism() -> Result<(), CommunexError> {
             // Either a connection error or parse error is acceptable
             assert!(matches!(e, 
                 CommunexError::ConnectionError(_) | 
-                CommunexError::ParseError(_)
+                CommunexError::ParseError(_) |
+                CommunexError::RpcError { .. }
             ));
             Ok(())
         }

@@ -8,9 +8,9 @@ use futures::Future;
 
 #[derive(Debug, Clone)]
 pub struct RpcClient {
-    url: String,
-    client: reqwest::Client,
-    config: RpcClientConfig,
+    pub url: String,
+    pub client: reqwest::Client,
+    pub config: RpcClientConfig,
 }
 
 impl RpcClient {
@@ -48,7 +48,7 @@ impl RpcClient {
         }
     }
 
-    async fn handle_rpc_response(&self, value: Value) -> Result<Value, CommunexError> {
+    pub async fn handle_rpc_response(&self, value: Value) -> Result<Value, CommunexError> {
         if let Some(error) = value.get("error") {
             let code = error.get("code")
                 .and_then(|c| c.as_i64())
@@ -65,31 +65,6 @@ impl RpcClient {
         value.get("result")
             .cloned()
             .ok_or_else(|| CommunexError::ParseError("Missing result field".to_string()))
-    }
-
-    pub async fn request(&self, method: &str, params: Value) -> Result<Value, CommunexError> {
-        let request = json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params,
-            "id": 1
-        });
-
-        self.execute_with_retry(|| async {
-            let response = self.client
-                .post(&self.url)
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| CommunexError::ConnectionError(e.to_string()))?;
-
-            let value = response
-                .json::<Value>()
-                .await
-                .map_err(|e| CommunexError::ParseError(e.to_string()))?;
-
-            self.handle_rpc_response(value).await
-        }).await
     }
 
     pub async fn batch_request(&self, batch: BatchRequest) -> Result<BatchResponse, CommunexError> {
@@ -146,7 +121,7 @@ impl RpcClient {
         self.batch_request(batch).await
     }
 
-    async fn handle_batch_response(&self, responses: Vec<Value>) -> Result<Vec<Value>, CommunexError> {
+    pub async fn handle_batch_response(&self, responses: Vec<Value>) -> Result<Vec<Value>, CommunexError> {
         let mut results = Vec::new();
         for response in responses {
             if let Some(error) = response.get("error") {
